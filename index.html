@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f1216">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+  <title>VP – Régie vidéo</title>
+</head>
+
+<body>
+  <div class="app">
+    <nav id="nav">
+      <button data-p="calc" class="on"><svg viewBox="0 0 24 24">
+          <rect x="3" y="5" width="18" height="11" rx="1.5" />
+          <path d="M8 20h8M12 16v4" />
+        </svg><span>Calcul</span></button>
+      <button data-p="vp"><svg viewBox="0 0 24 24">
+          <rect x="3" y="8" width="18" height="9" rx="2" />
+          <circle cx="15" cy="12.5" r="2.5" />
+          <path d="M6 17v2M18 17v2" />
+        </svg><span>Projecteurs</span></button>
+      <button data-p="ecran"><svg viewBox="0 0 24 24">
+          <rect x="2.5" y="4" width="19" height="12" rx="1" />
+          <path d="M8 20h8" />
+        </svg><span>Écrans</span></button>
+      <button data-p="proj"><svg viewBox="0 0 24 24">
+          <path d="M4 6h16M4 12h16M4 18h10" />
+        </svg><span>Projets</span></button>
+      <div class="sp"></div>
+      <button data-p="set"><svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />
+        </svg><span>Réglages</span></button>
+    </nav>
+
+    <main>
+      <header>
+        <h1 id="title">Calcul faisceau</h1>
+        <div class="locks" id="locks"></div>
+        <span class="vsep"></span>
+        <button class="autoBtn" id="auto" title="Auto : propose un réglage optimal (3 propositions en boucle)"
+          aria-label="Auto">
+          <svg viewBox="-50 -50 100 100">
+            <g id="autoRot">
+              <polygon points="-17.6,-46 17.6,-46 46,-17.6 46,17.6 17.6,46 -17.6,46 -46,17.6 -46,-17.6" />
+              <circle cx="0" cy="-34" r="5" />
+            </g><text x="0" y="8" text-anchor="middle">AUTO</text>
+          </svg>
+        </button>
+        <div class="toast" id="toast"></div>
+        <div class="hsp"></div>
+        <button class="hbtn" id="detBtn">∑ Calculs</button>
+      </header>
+
+      <section class="calc" id="p-calc">
+        <div class="col params scroll" id="params"></div>
+        <div class="col out">
+          <div class="status" id="status"></div>
+          <div class="viz" id="viz">
+            <div class="card face"><span class="tag">Vue de face (écran)</span><svg id="svgFace"></svg>
+              <div class="legend"><span><i style="background:#3ecf8e"></i>pixels utiles</span><span><i
+                    style="background:#ff5d5d"></i>pixels perdus</span><span><i style="background:#2b3440"></i>écran non
+                  couvert</span></div>
+            </div>
+            <div class="card side"><span class="tag">Vue de côté · glisser le VP</span><button class="expand"
+                title="Plein écran">⤢</button>
+              <div class="hud"></div><svg id="svgSide"></svg>
+            </div>
+            <div class="card top"><span class="tag">Vue de dessus · glisser le VP</span><button class="expand"
+                title="Plein écran">⤢</button>
+              <div class="hud"></div><svg id="svgTop"></svg>
+            </div>
+          </div>
+          <div class="results" id="kpis"></div>
+        </div>
+      </section>
+
+      <section class="page hidden" id="p-vp">
+        <h2>Parc de projecteurs</h2>
+        <p>Liste + fiche (ratio min/max, format, résolution, lumens, mode zoom/fixe). Remplace « Données VP ».</p>
+      </section>
+      <section class="page hidden" id="p-ecran">
+        <h2>Écrans</h2>
+        <p>Bibliothèque d'écrans (dimensions, format, gain). Plus tard : inclinaison de l'écran.</p>
+      </section>
+      <section class="page hidden" id="p-proj">
+        <h2>Projets</h2>
+        <p>Configurations sauvegardées, comparaison A/B, export.</p>
+      </section>
+      <section class="page hidden" id="p-set">
+        <h2>Réglages</h2>
+        <p>Unités, thème, import/export JSON.</p>
+      </section>
+
+      <aside id="details">
+        <div class="dhead">
+          <h3>Calculs détaillés</h3><button class="hbtn" id="detClose">Fermer</button>
+        </div>
+        <div class="tabs" id="dtabs"></div>
+        <div class="dbody" id="dbody"></div>
+      </aside>
+    </main>
+  </div>
+  <script src="geometry.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>

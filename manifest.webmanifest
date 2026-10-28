@@ -1,0 +1,10 @@
+{
+  "name": "VP – Régie vidéo",
+  "short_name": "VP",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1216",
+  "theme_color": "#0f1216",
+  "icons": []
+}
