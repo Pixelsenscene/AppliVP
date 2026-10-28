@@ -23,22 +23,95 @@ function ratioOf(vp, zoom) {
   return vp.zoomable ? vp.rmin + (vp.rmax - vp.rmin) * zoom / 100 : vp.rmin;
 }
 
-/* ---------- Faisceau : VP orienté vers le centre de l'écran, sans roulis ---------- */
+/* ---------- Valeurs standard (quand la fiche du projecteur ne les donne pas) ----------
+   Décalages en fraction de l'image : vertical = de sa hauteur, horizontal = de sa largeur (0,3 = 30 %).
+   Throw offset : position du centre de l'image au-dessus de l'axe de l'objectif, en fraction de la hauteur
+   d'image (0,6 = le bas de l'image est à 10 % de sa hauteur au-dessus de l'axe, VP posé sur une table). */
+const STD = { lensV: 0.30, lensH: 0.10, throwOffset: 0.60 };
+/* Au-delà, ça n'existe pratiquement pas sur le marché : avertissement en mode « libre » */
+const REAL_MAX = { lensV: 1.0, lensH: 0.4, tilt: 15, pan: 15, roll: 5, offset: 1.5, keystone: 0.10 };
+
+/* Limites du lens shift selon la source : 'maker' (fiche), 'std', 'free' (aucune limite -> null) */
+function hasMakerLens(vp) { return !!(vp.lensShift && vp.lensShift.v && vp.lensShift.h); }
+function lensLimits(vp, source) {
+  if (source === 'maker' && hasMakerLens(vp)) return vp.lensShift;
+  if (source === 'std') return { v: [-STD.lensV, STD.lensV], h: [-STD.lensH, STD.lensH] };
+  return null;
+}
+function throwOffsetOf(vp) {
+  return typeof vp.throwOffset === 'number' ? { value: vp.throwOffset, standard: false } : { value: STD.throwOffset, standard: true };
+}
+
+/* ---------- Contrôle de cohérence : rien n'est interdit, tout ce qui est irréaliste est signalé ----------
+   ctx = { lens, src, rot, off } (options cochées dans l'interface) ; r = résultat de compute().
+   Renvoie [{ key, text }] : key = réglage concerné (sx, sy, oy, pan, tilt, roll, lensSrc) ou null. */
+function checkSetup(vp, S, ctx, r) {
+  const W = [], pc = x => Math.round(x * 100).toLocaleString('fr-FR'), add = (key, text) => W.push({ key, text });
+  if (ctx.lens && ctx.src === 'free') {
+    if (Math.abs(S.sy) > REAL_MAX.lensV) add('sy', `Lens shift vertical de ${pc(S.sy)} % : aucun projecteur n'offre plus de ±${pc(REAL_MAX.lensV)} %.`);
+    if (Math.abs(S.sx) > REAL_MAX.lensH) add('sx', `Lens shift horizontal de ${pc(S.sx)} % : aucun projecteur n'offre plus de ±${pc(REAL_MAX.lensH)} %.`);
+  }
+  if (ctx.lens && ctx.src === 'maker' && vp.lensShift) {
+    const { v, h } = vp.lensShift;
+    if (v[0] > v[1] || h[0] > h[1]) add('lensSrc', 'Plage constructeur incohérente : un minimum dépasse son maximum.');
+    else if (Math.max(Math.abs(v[0]), Math.abs(v[1])) > REAL_MAX.lensV || Math.max(Math.abs(h[0]), Math.abs(h[1])) > REAL_MAX.lensH)
+      add('lensSrc', `Plage constructeur irréaliste (au-delà de ±${pc(REAL_MAX.lensV)} % en vertical ou ±${pc(REAL_MAX.lensH)} % en horizontal) : vérifier la fiche.`);
+  }
+  if (ctx.off && Math.abs(S.oy) > REAL_MAX.offset) add('oy', `Throw offset de ${pc(S.oy)} % : inhabituel (au-delà de ±${pc(REAL_MAX.offset)} %).`);
+  if (ctx.rot && S.rot) {
+    if (Math.abs(S.rot.pan) > REAL_MAX.pan) add('pan', `Pan de ${S.rot.pan.toFixed(1).replace('.', ',')}° : au-delà de ±${REAL_MAX.pan}°, déformation importante.`);
+    if (Math.abs(S.rot.tilt) > REAL_MAX.tilt) add('tilt', `Tilt de ${S.rot.tilt.toFixed(1).replace('.', ',')}° : au-delà de ±${REAL_MAX.tilt}°, déformation importante.`);
+    if (Math.abs(S.rot.roll) > REAL_MAX.roll) add('roll', `Roll de ${S.rot.roll.toFixed(1).replace('.', ',')}° : l'image est visiblement inclinée.`);
+  }
+  if (r && r.valid) {
+    const { AB, BC, CD, DA } = r.q.sides, k = Math.max(Math.max(AB, CD) / Math.min(AB, CD), Math.max(BC, DA) / Math.min(BC, DA)) - 1;
+    if (k > REAL_MAX.keystone) add(null, `Déformation en trapèze de ${pc(k)} % : l'image n'est plus rectangulaire (keystone).`);
+    if (r.ov.ai < 1e-9) add(null, "L'image est entièrement hors de l'écran.");
+  }
+  return W;
+}
+
+/* ---------- Orientation ----------
+   Automatique (S.rot absent) : l'axe optique vise le centre de l'écran.
+   Manuelle (S.rot = {pan, tilt, roll}, en degrés) : pan > 0 vers +x, tilt > 0 vers le haut, roll autour de l'axe.
+   pan = tilt = roll = 0 : axe perpendiculaire à l'écran, image droite. */
+const rad = d => d * Math.PI / 180;
+function autoAim(S) {                                      // angles équivalents à la visée automatique
+  const d = [-S.x, -S.y, S.sh / 2 - S.z];
+  return { pan: deg(Math.atan2(d[0], -d[1])), tilt: deg(Math.atan2(d[2], Math.hypot(d[0], d[1]))), roll: 0 };
+}
+
+/* ---------- Faisceau ----------
+   Les rayons du panneau (a, b) ∈ [-1,1]² sont décalés de (sa, sb) : lens shift + throw offset.
+   S.sx, S.sy = lens shift ; S.oy = throw offset (0 si absent). */
 function computeBeam(vp, S) {
   const scr = makeScreen(S.sw, S.sh);
   const P = [S.x, S.y, S.z];
-  const T = add(scr.origin, mul(scr.up, S.sh / 2));
-  const d = sub(T, P), dist = len(d);
-  if (dist < 1e-6) return { valid: false };
-  const w = mul(d, 1 / dist);
+  let w;
+  if (S.rot) {
+    const p = rad(S.rot.pan), t = rad(S.rot.tilt);
+    w = [Math.sin(p) * Math.cos(t), -Math.cos(p) * Math.cos(t), Math.sin(t)];
+  } else {
+    const d = sub(add(scr.origin, mul(scr.up, S.sh / 2)), P), dist = len(d);
+    if (dist < 1e-6) return { valid: false };
+    w = mul(d, 1 / dist);
+  }
+  const wn = dot(w, scr.normal);
+  if (wn > -1e-9) return { valid: false };                // l'axe ne rencontre pas l'écran
+  const dist = dot(sub(scr.origin, P), scr.normal) / wn;  // distance VP -> point visé (w est unitaire)
+  if (dist <= 0) return { valid: false };
+  const T = add(P, mul(w, dist));
   let u = cross([0,0,1], w);
   u = len(u) < 1e-9 ? [1,0,0] : unit(u);
-  const v = cross(w, u);
+  let v = cross(w, u);
+  const roll = S.rot ? S.rot.roll || 0 : 0;
+  if (roll) { const c = Math.cos(rad(roll)), s = Math.sin(rad(roll)); [u, v] = [add(mul(u, c), mul(v, s)), add(mul(v, c), mul(u, -s))]; }
   const ratio = ratioOf(vp, S.zoom);
   const tanH = 1 / (2 * ratio), tanV = tanH * vp.fh / vp.fw;
+  const sa = 2 * (S.sx || 0), sb = 2 * ((S.sy || 0) + (S.oy || 0));
   const quad = [];
   for (const [a, b] of [[-1,1],[1,1],[1,-1],[-1,-1]]) {            // A B C D
-    const dir = add(w, add(mul(u, a * tanH), mul(v, b * tanV)));
+    const dir = add(w, add(mul(u, (a + sa) * tanH), mul(v, (b + sb) * tanV)));
     const den = dot(dir, scr.normal);
     if (den > -1e-9) return { valid: false };
     const t = dot(sub(scr.origin, P), scr.normal) / den;
@@ -46,14 +119,14 @@ function computeBeam(vp, S) {
     const H = add(P, mul(dir, t)), r = sub(H, scr.origin);
     quad.push([dot(r, scr.right), dot(r, scr.up)]);
   }
-  return { valid: true, scr, P, T, dist, w, u, v, ratio, tanH, tanV, quad };
+  return { valid: true, scr, P, T, dist, w, u, v, ratio, tanH, tanV, sa, sb, roll, quad };
 }
 
 /* écran (s,t) -> panneau du VP en pixels (X vers la droite, Y vers le haut) */
 function toPanel(B, vp, s, t) {
   const H = add(B.scr.origin, add(mul(B.scr.right, s), mul(B.scr.up, t)));
   const dd = sub(H, B.P), k = dot(dd, B.w);
-  const a = dot(dd, B.u) / k / B.tanH, b = dot(dd, B.v) / k / B.tanV;
+  const a = dot(dd, B.u) / k / B.tanH - B.sa, b = dot(dd, B.v) / k / B.tanV - B.sb;
   return [(a + 1) / 2 * vp.resW, (b + 1) / 2 * vp.resH];
 }
 
@@ -148,6 +221,7 @@ function compute(vp, S) {
     d: B.dist, dh, dz, y: S.y, x: S.x,
     pitch: deg(Math.atan2(dz, dh)), yaw: deg(Math.atan2(S.x, S.y)),
     incidence: deg(Math.acos(Math.min(1, Math.abs(dot(B.w, B.scr.normal))))),
+    pan: deg(Math.atan2(B.w[0], -B.w[1])), tilt: deg(Math.asin(B.w[2])), roll: B.roll,
     fovH: deg(2*Math.atan(B.tanH)), fovV: deg(2*Math.atan(B.tanV)),
     fovD: deg(2*Math.atan(Math.hypot(B.tanH, B.tanV))),
     beamW: 2*B.dist*B.tanH, beamH: 2*B.dist*B.tanV,
@@ -231,13 +305,13 @@ function autoProposals(vps, S0, locks, chain, aspect, max = 3, starts = 36) {
 
 /* point d'impact (s,t) du rayon (a,b) ∈ [-1,1]² du panneau sur le plan écran */
 function rayHit(B, a, b) {
-  const dir = add(B.w, add(mul(B.u, a * B.tanH), mul(B.v, b * B.tanV)));
+  const dir = add(B.w, add(mul(B.u, (a + B.sa) * B.tanH), mul(B.v, (b + B.sb) * B.tanV)));
   const den = dot(dir, B.scr.normal); if (den > -1e-9) return null;
   const t = dot(sub(B.scr.origin, B.P), B.scr.normal) / den, r = sub(add(B.P, mul(dir, t)), B.scr.origin);
   return [dot(r, B.scr.right), dot(r, B.scr.up)];
 }
 
-const api = { rayHit, RANGES, ratioOf, makeScreen, computeBeam, toPanel, area, clip, clipRect, quadStats,
+const api = { checkSetup, STD, REAL_MAX, hasMakerLens, lensLimits, throwOffsetOf, autoAim, rayHit, RANGES, ratioOf, makeScreen, computeBeam, toPanel, area, clip, clipRect, quadStats,
   overlap, compute, score, freeKeys, autoProposals, mid, distToLine, d2 };
 if (typeof module !== 'undefined') module.exports = api; else root.VPGeo = api;
 })(this);

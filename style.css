@@ -170,7 +170,7 @@ header .toast{position:static;transform:none;left:auto;top:auto;background:none;
 header .toast.show{transform:none}
 
 /* glisser le VP + plein écran */
-#svgSide,#svgTop{touch-action:none}
+#svgSide,#svgTop,#svgFace{touch-action:none}
 .handle{cursor:grab}
 .expand{position:absolute;right:8px;top:6px;width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);z-index:2;font-size:16px}
 .hud{display:none}
@@ -205,3 +205,41 @@ header .toast.show{transform:none}
   .viz.fs.fs-side .card.top,.viz.fs.fs-top .card.side{grid-column:1;grid-row:2}
   .viz.fs .card.face{grid-column:2;grid-row:2}
 }
+
+/* ---------- Optique avancée ---------- */
+.opt{display:flex;align-items:center;gap:8px;margin-top:10px;min-height:44px}
+.opt label{flex:1;display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer}
+.opt input[type=checkbox],.radios input{width:22px;height:22px;accent-color:var(--acc);margin:0;flex:none}
+.opt b{width:18px;color:var(--acc);font-size:15px}
+.opt span{font-weight:600}
+.grp{padding:0 0 6px 12px;border-left:2px solid var(--line);margin:0 0 4px 10px}
+.grp .row{grid-template-columns:1fr auto}
+.radios{display:flex;align-items:center;gap:4px 12px;flex-wrap:wrap;margin-top:6px}
+.radios label{display:flex;align-items:center;gap:7px;min-height:40px;font-size:13.5px;cursor:pointer}
+.radios label:has(input:disabled){opacity:.45;cursor:default}
+.radios .info{margin-left:auto}
+.info{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--mut);background:transparent;color:var(--mut);font:italic 700 14px/1 Georgia,serif;display:grid;place-items:center;flex:none;padding:0}
+.info:active{border-color:var(--acc);color:var(--acc)}
+.pop{position:fixed;z-index:60;background:var(--panel2);border:1px solid var(--acc);border-radius:12px;padding:11px 13px;font-size:13px;line-height:1.45;box-shadow:0 10px 30px rgba(0,0,0,.55)}
+.pop b{color:var(--acc)} .pop u{text-decoration-color:var(--acc);text-underline-offset:2px}
+.grp .row{column-gap:12px}
+.grp .row label{white-space:nowrap}
+.grp .val{width:78px}
+
+/* vue de face : choix de l'option qui reçoit le glisser */
+.dragSel{position:absolute;right:10px;top:8px;display:flex;gap:6px;z-index:2}
+.dragSel button{height:36px;padding:0 12px;border-radius:999px;border:1.5px solid var(--line);background:var(--panel2);color:var(--mut);font-weight:600;font-size:12.5px;white-space:nowrap}
+.dragSel button.on{border-color:var(--acc);color:var(--acc);background:rgba(77,163,255,.14)}
+.viz.fs .face .dragSel{display:none}
+
+/* alertes de cohérence */
+.warnPill{border:0;color:var(--txt);font:inherit;font-weight:600;cursor:pointer}
+.warnPill i{background:var(--warn)}
+.warnPill.open{outline:2px solid var(--warn)}
+.warnBox{background:var(--panel);border:1px solid var(--warn);border-radius:var(--r);padding:8px 12px;display:grid;gap:6px;flex:none}
+.warnBox div{display:flex;gap:8px;font-size:13.5px;line-height:1.35}
+.warnBox div::before{content:"⚠";color:var(--warn);flex:none}
+.warnBox small{color:var(--mut);margin-left:auto;white-space:nowrap;padding-left:8px}
+.rw{grid-column:1/-1;color:var(--warn);font-size:12.5px;line-height:1.35;margin-top:2px}
+.rw:empty{display:none}
+.sub.warn{color:var(--warn)}

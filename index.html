@@ -62,8 +62,9 @@
         <div class="col params scroll" id="params"></div>
         <div class="col out">
           <div class="status" id="status"></div>
+          <div class="warnBox hidden" id="warnBox"></div>
           <div class="viz" id="viz">
-            <div class="card face"><span class="tag">Vue de face (écran)</span><svg id="svgFace"></svg>
+            <div class="card face"><span class="tag" id="faceTag">Vue de face (écran)</span><div class="dragSel" id="dragSel"></div><svg id="svgFace"></svg>
               <div class="legend"><span><i style="background:#3ecf8e"></i>pixels utiles</span><span><i
                     style="background:#ff5d5d"></i>pixels perdus</span><span><i style="background:#2b3440"></i>écran non
                   couvert</span></div>

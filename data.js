@@ -1,4 +1,7 @@
-/* Parc de projecteurs (issu de vp_data.json). resW/resH = panneau natif. */
+/* Parc de projecteurs (issu de vp_data.json). resW/resH = panneau natif.
+   Champs optionnels (à défaut, valeurs standard de geometry.js) :
+   - lensShift: { v:[min,max], h:[min,max] } en fraction de la hauteur / largeur de l'image (0.5 = 50 %)
+   - throwOffset: centre de l'image au-dessus de l'axe de l'objectif, en fraction de la hauteur d'image */
 window.VP_DATA = {
   "JVC Seb":  { rmin:1.12, rmax:1.8,  fw:16, fh:10, resW:1280, resH:800,  res:"WXGA",    lm:5000, zoomable:true },
   "BenQ TE":  { rmin:0.72, rmax:0.87, fw:16, fh:10, resW:1280, resH:800,  res:"WXGA",    lm:5000, zoomable:true },

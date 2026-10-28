@@ -8,7 +8,7 @@ const fm = (v, n = 2) => (Math.abs(v) < 0.5 * 10 ** -n ? 0 : v).toLocaleString('
 const fi = v => Math.round(v).toLocaleString('fr-FR');
 
 /* ---------- État ---------- */
-const S = { vp: 'VP1', sw: 4, sh: 2.25, x: 0, y: 9, z: 1.5, zoom: 50 };
+const S = { vp: 'VP1', sw: 4, sh: 2.25, x: 0, y: 9, z: 1.5, zoom: 50, sx: 0, sy: 0, oy: 0, rot: null };   // sx, sy : lens shift · oy : throw offset · rot : orientation manuelle {pan, tilt, roll}
 const st = { chain: true, aspect: 16 / 9 };
 // verrouillé = true. Par défaut : projecteur et écran figés, position + zoom libres.
 const locks = { vp: true, sw: true, sh: true, x: false, y: false, z: false, zoom: false };
@@ -84,6 +84,7 @@ function buildParams() {
   box.querySelectorAll('.lk[data-k]').forEach(b => b.onclick = () => { locks[b.dataset.k] = !locks[b.dataset.k]; render(); });
   box.querySelectorAll('.lk[data-g]').forEach(b => b.onclick = () => toggleGroup(b.dataset.g));
   $('chain').onclick = () => { st.chain = !st.chain; if (st.chain) st.aspect = S.sw / S.sh; render(); };
+  buildAdv(box);
 }
 function toggleGroup(id) {
   const g = GROUPS.find(x => x.id === id), lock = groupState(g) !== 'locked';
@@ -113,6 +114,162 @@ function syncLocks() {
   }
   $('vpsel').classList.toggle('locked', locks.vp);
 }
+
+/* ---------- Optique avancée : A lens shift · B translation · C rotation · throw offset ---------- */
+const adv = { lens: false, trans: false, rot: false, src: 'std', off: false, offV: 0, offEdited: false, drag: 'lens', _vp: null };
+const LENS_FREE = { v: 2, h: 1 };                                   // course des curseurs en mode libre (fraction de l'image)
+const lensRange = ax => { const L = G.lensLimits(vpOf(), adv.src); return L ? L[ax] : [-LENS_FREE[ax], LENS_FREE[ax]]; };
+const HELP = {
+  lens: "<b>Lens shift (décalage optique)</b> : l'objectif glisse dans le projecteur. L'image se déplace sur l'écran <u>sans se déformer</u>, le VP restant droit. La plage dépend du modèle ; elle s'exprime en % de la hauteur (vertical) ou de la largeur (horizontal) de l'image.",
+  src: "<b>Constructeur</b> : plage donnée par la fiche du projecteur (si renseignée).<br><b>Standard</b> : moyenne courante, ±30 % en vertical et ±10 % en horizontal.<br><b>Libre</b> : aucune limite, pour tester un cas hors fiche.",
+  trans: "<b>Translation du VP</b> : on déplace le projecteur (x, y, z) sans le faire pivoter. Son axe reste fixe : l'image suit le VP et le faisceau se <u>désaxe</u> de l'écran. Cocher cette case fige la visée automatique.",
+  rot: "<b>Rotation du VP</b> : <i>pan</i> = gauche / droite, <i>tilt</i> = haut / bas, <i>roll</i> = autour de l'axe optique. L'image se déplace mais se <u>déforme en trapèze</u> (keystone). Les angles partent de la visée actuelle.",
+  off: "<b>Throw offset</b> : décalage vertical <u>fixe</u> de l'image par rapport à l'axe de l'objectif, propre à chaque modèle. À +60 %, le bas de l'image est à 10 % de sa hauteur au-dessus de l'axe (VP posé sur une table). Il s'ajoute au lens shift ; en plafonnier retourné, il est négatif.",
+};
+const ADV_ROWS = [
+  { id: 'sx', grp: 'lens', label: 'Horizontal', unit: '%', dp: 0, lens: 'h', step: 1, hard: 500, get: () => S.sx * 100, set: v => S.sx = v / 100 },
+  { id: 'sy', grp: 'lens', label: 'Vertical',   unit: '%', dp: 0, lens: 'v', step: 1, hard: 500, get: () => S.sy * 100, set: v => S.sy = v / 100 },
+  { id: 'oy', grp: 'off',  label: 'Décalage vertical', unit: '%', dp: 0, min: -100, max: 150, step: 1, hard: 300, get: () => adv.offV * 100, set: v => { adv.offV = v / 100; adv.offEdited = true; } },
+  { id: 'pan',  grp: 'rot', label: 'Pan ↔ gauche / droite', unit: '°', dp: 1, min: -45, max: 45, step: 0.5, hard: 89,  get: () => S.rot ? S.rot.pan : 0,  set: v => S.rot.pan = v },
+  { id: 'tilt', grp: 'rot', label: 'Tilt ↕ haut / bas',     unit: '°', dp: 1, min: -45, max: 45, step: 0.5, hard: 89,  get: () => S.rot ? S.rot.tilt : 0, set: v => S.rot.tilt = v },
+  { id: 'roll', grp: 'rot', label: 'Roll ⟳ autour de l\'axe', unit: '°', dp: 1, min: -45, max: 45, step: 0.5, hard: 180, get: () => S.rot ? S.rot.roll : 0, set: v => S.rot.roll = v },
+];
+const advSlider = r => r.lens ? lensRange(r.lens).map(x => x * 100) : [r.min, r.max];
+const advRowHtml = r => `<div class="row" data-a="${r.id}"><label>${r.label}</label><input class="val" id="a_o_${r.id}" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <div class="ctl"><button data-a="${r.id}" data-d="-1">−</button><input type="range" id="a_${r.id}" step="${r.step}"><button data-a="${r.id}" data-d="1">+</button></div><div class="rw" id="a_w_${r.id}"></div></div>`;
+const optHtml = (id, tag, name, help) => `<div class="opt"><label><input type="checkbox" id="adv_${id}"><b>${tag}</b><span>${name}</span></label><button class="info" data-h="${help}" aria-label="Aide">i</button></div>`;
+
+function buildAdv(box) {
+  const rows = g => ADV_ROWS.filter(r => r.grp === g).map(advRowHtml).join('');
+  const card = document.createElement('div'); card.className = 'card'; card.id = 'advCard';
+  card.innerHTML = `<h2>Optique avancée</h2>
+    ${optHtml('lens', 'A', 'Lens shift', 'lens')}
+    <div class="grp" id="g_lens">
+      <div class="radios" id="lensSrc">${[['maker', 'Constructeur'], ['std', 'Standard'], ['free', 'Libre']].map(([v, t]) => `<label><input type="radio" name="lsrc" value="${v}"><span>${t}</span></label>`).join('')}<button class="info" data-h="src" aria-label="Aide">i</button></div>
+      <div class="sub" id="lensHint"></div>${rows('lens')}</div>
+    ${optHtml('trans', 'B', 'Translation du VP', 'trans')}
+    <div class="grp" id="g_trans"><div class="sub">Orientation figée : les curseurs x, y, z (et la vue de côté / dessus) déplacent l'image.</div></div>
+    ${optHtml('rot', 'C', 'Rotation du VP', 'rot')}
+    <div class="grp" id="g_rot">${rows('rot')}<div class="chips"><button id="aimBtn">⌖ Viser le centre de l'écran</button></div></div>
+    ${optHtml('off', '', 'Throw offset', 'off')}
+    <div class="grp" id="g_off"><div class="sub" id="offHint"></div>${rows('off')}</div>`;
+  box.append(card);
+
+  const chk = (id, fn) => $('adv_' + id).onchange = e => { fn(e.target.checked); render(); };
+  chk('lens', on => { adv.lens = on; });
+  chk('trans', on => { adv.trans = on; syncRot(); });
+  chk('rot', on => { adv.rot = on; syncRot(); });
+  chk('off', on => { adv.off = on; adv.offEdited = false; adv.offV = on ? G.throwOffsetOf(vpOf()).value : 0; });
+  card.querySelectorAll('input[name=lsrc]').forEach(i => i.onchange = () => { adv.src = i.value; render(); });
+  $('aimBtn').onclick = () => { S.rot = G.autoAim(S); render(); };
+
+  const byId = id => ADV_ROWS.find(r => r.id === id);
+  const apply = (r, v) => { const lim = r.lens && adv.src !== 'free' ? advSlider(r) : [-r.hard, r.hard]; r.set(Math.max(lim[0], Math.min(lim[1], v))); render(); };
+  card.querySelectorAll('input[type=range]').forEach(i => i.oninput = () => apply(byId(i.id.slice(2)), +i.value));
+  card.querySelectorAll('.ctl button').forEach(b => b.onclick = () => { const r = byId(b.dataset.a); apply(r, r.get() + (+b.dataset.d) * r.step); });
+  card.querySelectorAll('.val').forEach(inp => {
+    const r = byId(inp.id.slice(4));
+    inp.onfocus = () => { inp.value = fm(r.get(), r.dp); setTimeout(() => inp.select(), 0); };
+    inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.dataset.cancel = 1; inp.blur(); } };
+    inp.onblur = () => {
+      const cancel = inp.dataset.cancel; delete inp.dataset.cancel;
+      const v = parseFloat(inp.value.replace(/\s/g, '').replace(',', '.').replace('−', '-').replace('%', '').replace('°', ''));
+      if (!cancel && isFinite(v)) apply(r, v); else render();
+    };
+  });
+
+  const pop = document.createElement('div'); pop.id = 'pop'; pop.className = 'pop hidden'; document.body.append(pop);
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.info');
+    if (!b) { if (!e.target.closest('#pop')) pop.classList.add('hidden'); return; }
+    if (!pop.classList.contains('hidden') && pop._for === b) { pop.classList.add('hidden'); return; }
+    pop._for = b; pop.innerHTML = HELP[b.dataset.h]; pop.classList.remove('hidden');
+    const rc = b.getBoundingClientRect(), w = Math.min(320, innerWidth - 16);
+    pop.style.width = w + 'px'; pop.style.left = Math.max(8, Math.min(rc.left - 8, innerWidth - w - 8)) + 'px';
+    const h = pop.offsetHeight; pop.style.top = (rc.bottom + 8 + h > innerHeight ? Math.max(8, rc.top - h - 8) : rc.bottom + 8) + 'px';
+  });
+  addEventListener('keydown', e => { if (e.key === 'Escape') pop.classList.add('hidden'); });
+}
+/* B et C reposent sur une orientation manuelle ; sans B ni C, la visée redevient automatique */
+function syncRot() {
+  if (adv.trans || adv.rot) { if (!S.rot) S.rot = G.autoAim(S); }
+  else S.rot = null;
+}
+/* cohérence de l'état avant calcul : changement de VP, limites du lens shift, throw offset effectif */
+function syncAdv() {
+  const v = vpOf();
+  if (adv._vp !== S.vp) {
+    adv._vp = S.vp;
+    if (adv.off) { adv.offV = G.throwOffsetOf(v).value; adv.offEdited = false; }
+  }
+  if (adv.src === 'maker' && !G.hasMakerLens(v)) adv.src = 'std';
+  if (!adv.lens) { S.sx = 0; S.sy = 0; }
+  else if (adv.src !== 'free') {
+    const cl = (v, [a, b]) => Math.max(a, Math.min(b, v));
+    S.sx = cl(S.sx, lensRange('h')); S.sy = cl(S.sy, lensRange('v'));
+  }
+  S.oy = adv.off ? adv.offV : 0;
+}
+function drawAdv() {
+  const v = vpOf(), pct = x => fm(x * 100, 0);
+  for (const id of ['lens', 'trans', 'rot', 'off']) { $('adv_' + id).checked = adv[id]; $('g_' + id).classList.toggle('hidden', !adv[id]); }
+  document.querySelectorAll('#lensSrc input').forEach(i => {
+    const nok = i.value === 'maker' && !G.hasMakerLens(v);
+    i.checked = i.value === adv.src; i.disabled = nok; i.nextElementSibling.textContent = nok ? 'Constructeur (non renseigné)' : { maker: 'Constructeur', std: 'Standard', free: 'Libre' }[i.value];
+  });
+  const L = G.lensLimits(v, adv.src);
+  $('lensHint').textContent = L ? `Plage ${adv.src === 'maker' ? 'constructeur' : 'standard'} : vertical ${pct(L.v[0])} à ${pct(L.v[1])} % · horizontal ${pct(L.h[0])} à ${pct(L.h[1])} %` : 'Aucune limite (mode libre).';
+  const wl = $('lensHint'), wm = warns.filter(w => w.key === 'lensSrc').map(w => w.text).join(' ');
+  wl.classList.toggle('warn', !!wm); if (wm) wl.textContent = wm;
+  const T = G.throwOffsetOf(v);
+  $('offHint').textContent = adv.offEdited ? `Valeur modifiée (fiche : ${T.standard ? 'standard ' : ''}${pct(T.value)} %)` : T.standard ? `Valeur standard (${pct(T.value)} %) : non renseignée pour ce projecteur` : 'Valeur de la fiche du projecteur';
+  for (const r of ADV_ROWS) {
+    const [lo, hi] = advSlider(r), i = $('a_' + r.id), o = $('a_o_' + r.id);
+    i.min = lo; i.max = hi; i.value = r.get();
+    if (document.activeElement !== o) o.value = fm(r.get(), r.dp) + ' ' + r.unit;
+    $('a_w_' + r.id).textContent = warns.filter(w => w.key === r.id).map(w => w.text).join(' ');
+  }
+}
+
+/* ---------- Glisser le faisceau dans la vue de face ---------- */
+const DRAG_OPTS = [['lens', 'A · Lens shift'], ['trans', 'B · Translation'], ['rot', 'C · Rotation']];
+const dragMode = () => { const on = DRAG_OPTS.map(o => o[0]).filter(k => adv[k]); return on.includes(adv.drag) ? adv.drag : on[0] || null; };
+function drawDragSel() {
+  const on = DRAG_OPTS.filter(o => adv[o[0]]), cur = dragMode();
+  $('dragSel').innerHTML = on.map(([k, t]) => `<button data-m="${k}" class="${k === cur ? 'on' : ''}">${t}</button>`).join('');
+  $('faceTag').textContent = cur ? 'Vue de face · glisser le faisceau' : 'Vue de face (écran)';
+}
+function attachFaceDrag() {
+  const svg = $('svgFace'); let st0 = null;
+  $('dragSel').onclick = e => { const b = e.target.closest('button'); if (b) { adv.drag = b.dataset.m; render(); } };
+  const world = e => { const rc = svg.getBoundingClientRect(), F = frozen.svgFace; return [F.ix(e.clientX - rc.left), F.iy(e.clientY - rc.top)]; };
+  svg.addEventListener('pointerdown', e => {
+    if (!e.target.closest('.handle') || !lastR || !lastR.valid) return;
+    e.preventDefault(); try { svg.setPointerCapture(e.pointerId); } catch (_) { /* pointeur synthétique */ }
+    frozen.svgFace = svg._F;
+    const q = lastR.q;
+    st0 = { m: dragMode(), w: world(e), sx: S.sx, sy: S.sy, x: S.x, z: S.z, rot: S.rot && { ...S.rot },
+      Wb: (q.sides.AB + q.sides.CD) / 2, Hb: (q.sides.BC + q.sides.DA) / 2, dist: lastR.B.dist };
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!st0 || !frozen.svgFace) return;
+    const w = world(e), dx = w[0] - st0.w[0], dz = w[1] - st0.w[1], cl = (v, [a, b]) => Math.max(a, Math.min(b, v));
+    if (st0.m === 'lens') {
+      const lh = adv.src === 'free' ? [-5, 5] : lensRange('h'), lv = adv.src === 'free' ? [-5, 5] : lensRange('v');
+      S.sx = Math.round(cl(st0.sx + dx / st0.Wb, lh) * 200) / 200; S.sy = Math.round(cl(st0.sy + dz / st0.Hb, lv) * 200) / 200;
+    } else if (st0.m === 'trans') {
+      if (!locks.x) S.x = clampP('x', Math.round((st0.x + dx) * 100) / 100);
+      if (!locks.z) S.z = clampP('z', Math.round((st0.z + dz) * 100) / 100);
+    } else if (st0.m === 'rot' && S.rot) {
+      S.rot.pan = Math.round(cl(st0.rot.pan + deg(Math.atan2(dx, st0.dist)), [-89, 89]) * 10) / 10;
+      S.rot.tilt = Math.round(cl(st0.rot.tilt + deg(Math.atan2(dz, st0.dist)), [-89, 89]) * 10) / 10;
+    }
+    render();
+  });
+  const end = () => { if (!st0) return; st0 = null; delete frozen.svgFace; render(); };
+  svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
+}
+const deg = r => r * 180 / Math.PI;
 
 /* ---------- SVG ---------- */
 function el(t, a, txt) { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; return e; }
@@ -159,14 +316,21 @@ function statusHtml(r) {
   }
   return html;
 }
-function drawStatus(r) { $('status').innerHTML = statusHtml(r); }
+let warns = [], warnOpen = false;
+function drawStatus(r) {
+  const n = warns.length;
+  $('status').innerHTML = statusHtml(r) + (n ? `<button class="stat warnPill ${warnOpen ? 'open' : ''}" id="warnBtn"><i></i><span>${n} alerte${n > 1 ? 's' : ''}</span></button>` : '');
+  const box = $('warnBox'); box.classList.toggle('hidden', !n || !warnOpen);
+  box.innerHTML = warnOpen ? warns.map(w => `<div><span>${w.text}</span>${w.key ? `<small>${({ sx: 'Lens shift H', sy: 'Lens shift V', lensSrc: 'Lens shift', oy: 'Throw offset', pan: 'Pan', tilt: 'Tilt', roll: 'Roll' })[w.key]}</small>` : ''}</div>`).join('') : '';
+}
+$('status').onclick = e => { if (e.target.closest('#warnBtn')) { warnOpen = !warnOpen; drawStatus(lastR); } };
 
 /* ---------- Vue de face ---------- */
 function drawFace(r) {
   const svg = $('svgFace'); if (!r.valid) { svg.replaceChildren(); return; }
   const Q = r.B.quad, xs = Q.map(p => p[0]).concat(-S.sw / 2, S.sw / 2), ys = Q.map(p => p[1]).concat(0, S.sh);
   const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-  const F = frame(svg, x0, x1, y0, y1); gridLines(svg, F, x0 - 1, x1 + 1, y0 - 1, y1 + 1);
+  const F = viewFrame(svg, [x0, x1, y0, y1]); gridLines(svg, F, x0 - 1, x1 + 1, y0 - 1, y1 + 1);
   const sx = F.X(-S.sw / 2), sy = F.Y(S.sh), sW = F.X(S.sw / 2) - sx, sH = F.Y(0) - sy;
   const lvl = verdict(r).lvl;
   svg.append(el('defs', {}), (() => { const d = el('defs', {});
@@ -181,9 +345,15 @@ function drawFace(r) {
     svg.append(el('circle', { cx: F.X(p[0]), cy: F.Y(p[1]), r: 3.5, fill: '#4da3ff' }));
     svg.append(el('text', { x: F.X(p[0]) + ox, y: F.Y(p[1]) + oy, 'text-anchor': 'middle', fill: '#9cc9ff', 'font-size': 13, 'font-weight': 700 }, n));
   });
-  const cx = F.X(0), cy = F.Y(S.sh / 2);                                                                      // point visé
+  const cx = F.X(r.B.T[0]), cy = F.Y(r.B.T[2]);                                                               // point visé par l'axe optique
   svg.append(el('path', { d: `M${cx - 7},${cy}H${cx + 7}M${cx},${cy - 7}V${cy + 7}`, stroke: '#fff', 'stroke-width': 1.5, opacity: .7 }));
   svg.append(el('text', { x: F.X(0), y: sy - 8, 'text-anchor': 'middle', fill: '#e8edf2', 'font-size': 13 }, `${fm(S.sw)} × ${fm(S.sh)} m`));
+  const dm = dragMode();
+  if (dm && !isThumb(svg)) {                                                       // poignée au centre de l'image : glisser = déplacer le faisceau
+    const g = r.q.centroid, free = dm !== 'trans' || !locks.x || !locks.z, hx = F.X(g[0]), hy = F.Y(g[1]);
+    svg.append(el('circle', { cx: hx, cy: hy, r: 17, fill: 'none', stroke: free ? '#fff' : '#b58cff', 'stroke-width': 1.5, 'stroke-dasharray': '3 3', opacity: .85 }));
+    if (free) svg.append(el('circle', { class: 'handle', cx: hx, cy: hy, r: 30, fill: 'transparent' }));
+  }
   if (isThumb(svg)) {                                                            // petite vue : dimensions du faisceau + angles aux sommets
     const q = r.q, inw = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
     ['A', 'B', 'C', 'D'].forEach((n, i) => val(svg, F.X(Q[i][0]) + inw[i][0] * 6, F.Y(Q[i][1]) + inw[i][1] * 16, `${fm(q.angles[n], 1)}°`, inw[i][0] > 0 ? 'start' : 'end', '#9cc9ff', 11));
@@ -225,7 +395,7 @@ function drawSide(r) {
   seg(bot[1], top[1], LOST, 7);                                                                                  // empreinte du faisceau
   seg(Math.max(0, bot[1]), Math.min(S.sh, top[1]), USEFUL, 7);                                                   // partie utile
   svg.append(el('line', { x1: F.X(0), x2: F.X(0), y1: F.Y(0), y2: F.Y(S.sh), stroke: '#fff', 'stroke-width': 1.5, opacity: .6 }));
-  svg.append(el('line', { x1: F.X(S.y), y1: F.Y(S.z), x2: F.X(0), y2: F.Y(S.sh / 2), stroke: '#fff', 'stroke-dasharray': '4 4', opacity: .5 }));
+  svg.append(el('line', { x1: F.X(S.y), y1: F.Y(S.z), x2: F.X(0), y2: F.Y(r.B.T[2]), stroke: '#fff', 'stroke-dasharray': '4 4', opacity: .5 }));
   svg.append(el('rect', { x: F.X(S.y) - 8, y: F.Y(S.z) - 6, width: 16, height: 12, rx: 2, fill: '#4da3ff' }));
   if (isBig(svg)) {
     dim(svg, F, [0, 0], [S.y, 0], `y = ${fm(S.y)} m`, [0, 28], [0, 22]);
@@ -247,7 +417,7 @@ function drawTop(r) {
   const seg = (a, b, c, w) => svg.append(el('line', { x1: F.X(a), x2: F.X(b), y1: F.Y(0), y2: F.Y(0), stroke: c, 'stroke-width': w }));
   seg(L[0], R[0], LOST, 7); seg(Math.max(L[0], -S.sw / 2), Math.min(R[0], S.sw / 2), USEFUL, 7);
   svg.append(el('line', { x1: F.X(-S.sw / 2), x2: F.X(S.sw / 2), y1: F.Y(0), y2: F.Y(0), stroke: '#fff', 'stroke-width': 1.5, opacity: .6 }));
-  svg.append(el('line', { x1: F.X(S.x), y1: F.Y(S.y), x2: F.X(0), y2: F.Y(0), stroke: '#fff', 'stroke-dasharray': '4 4', opacity: .5 }));
+  svg.append(el('line', { x1: F.X(S.x), y1: F.Y(S.y), x2: F.X(r.B.T[0]), y2: F.Y(0), stroke: '#fff', 'stroke-dasharray': '4 4', opacity: .5 }));
   svg.append(el('rect', { x: F.X(S.x) - 8, y: F.Y(S.y) - 6, width: 16, height: 12, rx: 2, fill: '#4da3ff' }));
   if (isBig(svg)) {
     dim(svg, F, [S.x, 0], [S.x, S.y], `y = ${fm(S.y)} m`, [34, 0], [10, 5], 'start');
@@ -310,7 +480,9 @@ function drawKpis(r) {
 
 /* ---------- Rendu principal ---------- */
 function render() {
+  syncAdv();
   const r = G.compute(vpOf(), S), v = vpOf();
+  warns = G.checkSetup(v, S, { lens: adv.lens, src: adv.src, rot: adv.rot, off: adv.off }, r);
   for (const k of Object.keys(PARAMS)) {
     const i = $(k); if (+i.value !== S[k]) i.value = S[k];
     const o = $('o_' + k); o.readOnly = locks[k];
@@ -322,7 +494,7 @@ function render() {
   document.querySelector('.row[data-k=zoom]').style.display = v.zoomable ? '' : 'none';
   $('chain').classList.toggle('on', effChain());
   $('chain').style.opacity = locks.sw || locks.sh ? .4 : 1;
-  syncLocks();
+  syncLocks(); drawAdv(); drawDragSel();
   drawStatus(r);
   const canAuto = G.autoProposals ? Object.keys(locks).some(k => !locks[k] && (k !== 'zoom' || v.zoomable) && (k !== 'vp' || true)) : false;
   $('auto').disabled = !canAuto;
@@ -502,13 +674,14 @@ function buildDetails(r) {
 
 function renderDetails(r) {
   const body = $('dbody'), tabsEl = $('dtabs');
+  const note = S.rot && tab === 'pos' ? '<p class="sub warn">Orientation manuelle : ce triangle suppose une visée vers le centre de l’écran et ne décrit plus l’axe réel du VP (voir pan / tilt / roll).</p>' : '';
   if (!r || !r.valid) { body.innerHTML = '<p class="sub">Faisceau hors écran : aucun calcul.</p>'; return; }
   const tabs = buildDetails(r), T = tabs[tab] || tabs.quad;
   tabsEl.innerHTML = Object.entries(tabs).map(([k, t]) => `<button data-t="${k}" class="${k === tab ? 'on' : ''}">${t.label}</button>`).join('');
   tabsEl.onclick = e => { const b = e.target.closest('button'); if (b) { tab = b.dataset.t; selRow = 1; renderDetails(G.compute(vpOf(), S)); } };
   const rows = T.rows;
   if (!rows[selRow] || rows[selRow].sec) selRow = rows.findIndex(x => !x.sec);
-  body.innerHTML = `<div class="figs">${T.views.map(() => '<svg></svg>').join('')}</div>` +
+  body.innerHTML = note + `<div class="figs">${T.views.map(() => '<svg></svg>').join('')}</div>` +
     rows.map((x, i) => x.sec ? `<div class="sec">${x.sec}</div>` :
       `<button class="m ${i === selRow ? 'sel' : ''}" data-i="${i}"><span class="n">${x.n}</span><span class="f">${x.f}</span><b>${x.val}</b></button>`).join('');
   body.onclick = e => { const b = e.target.closest('.m'); if (b) { selRow = +b.dataset.i; renderDetails(r); } };
@@ -534,15 +707,32 @@ $('nav').onclick = e => {
 addEventListener('resize', render);
 
 buildParams(); buildLockPills();
-attachDrag('svgSide', ['y', 'z']); attachDrag('svgTop', ['x', 'y']);
+attachDrag('svgSide', ['y', 'z']); attachDrag('svgTop', ['x', 'y']); attachFaceDrag();
 document.querySelectorAll('.expand').forEach(b => b.onclick = () => toggleFull(b.closest('.card')));
 $('viz').addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) { locks[c.dataset.k] = !locks[c.dataset.k]; render(); } });
 addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.card.full').forEach(c => toggleFull(c, false)); });
 render();
-/* aides de test : ?details=quad|pos|scr|px  ?auto=1  ?unlock=1 */
+/* aides de test : ?details=quad|pos|scr|px  ?auto=1  ?unlock=1  ?adv=lens,trans,rot,off  ?lens=sx,sy (en %)  ?pop=lens  ?scroll=1  ?simdrag=dx,dy (pixels, sur la poignée de la vue de face)  ?src=free|std|maker  ?rot=pan,tilt,roll  ?warn=1 (ouvre la liste des alertes) */
 const qs = new URLSearchParams(location.search);
 if (qs.get('unlock')) { Object.keys(locks).forEach(k => locks[k] = false); render(); }
 if (qs.get('auto')) { for (let i = 0; i < +qs.get('auto'); i++) $('auto').click(); }
+if (qs.get('adv')) qs.get('adv').split(',').forEach(id => { const c = $('adv_' + id); if (c) { c.checked = true; c.dispatchEvent(new Event('change')); } });
+if (qs.get('src')) { adv.src = qs.get('src'); render(); }
+if (qs.get('rot') && S.rot) { [S.rot.pan, S.rot.tilt, S.rot.roll] = qs.get('rot').split(',').map(Number); render(); }
+if (qs.get('lens')) { const [a, b] = qs.get('lens').split(',').map(Number); S.sx = a / 100; S.sy = b / 100; render(); }
+if (qs.get('pop')) document.querySelector(`.info[data-h=${qs.get('pop')}]`).click();
+if (qs.get('scroll')) $('params').scrollTop = 1e5;
+if (qs.get('simdrag')) {
+  const [dx, dy] = qs.get('simdrag').split(',').map(Number), h = document.querySelector('#svgFace .handle'), svg = $('svgFace');
+  if (h) {
+    const rc = h.getBoundingClientRect(), x = rc.left + rc.width / 2, y = rc.top + rc.height / 2, k = svg._F.k, c0 = lastR.q.centroid;
+    const ev = (t, px, py) => new PointerEvent(t, { clientX: px, clientY: py, pointerId: 1, bubbles: true });
+    h.dispatchEvent(ev('pointerdown', x, y)); svg.dispatchEvent(ev('pointermove', x + dx, y + dy));
+    const c1 = lastR.q.centroid; svg.dispatchEvent(ev('pointerup', x + dx, y + dy));
+    document.body.dataset.sim = JSON.stringify({ wantX: dx / k, wantZ: -dy / k, gotX: c1[0] - c0[0], gotZ: c1[1] - c0[1], sx: S.sx, sy: S.sy, x: S.x, z: S.z, rot: S.rot });
+  } else document.body.dataset.sim = 'no handle';
+}
+if (qs.get('warn')) { warnOpen = true; render(); }
 if (qs.get('full')) toggleFull(document.querySelector('.card.' + qs.get('full')), true);
 if (qs.get('details')) { tab = qs.get('details'); selRow = +qs.get('row') || 1; $('detBtn').click(); }
 })();
