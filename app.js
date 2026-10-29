@@ -1,7 +1,8 @@
 /* VP – interface */
 (() => {
 'use strict';
-const G = window.VPGeo, VPS = window.VP_DATA;
+const G = window.VPGeo;
+let VPS = window.Parc.usable();                 // projecteurs cochés dans la page Projecteurs
 const $ = id => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
 const fm = (v, n = 2) => (Math.abs(v) < 0.5 * 10 ** -n ? 0 : v).toLocaleString('fr-FR', { minimumFractionDigits: n, maximumFractionDigits: n });   // jamais « −0,00 »
@@ -38,6 +39,14 @@ const groupState = g => {
   return n === 0 ? 'free' : n === g.keys.length ? 'locked' : 'mixed';
 };
 
+const fillVpSelect = () => { const sel = $('vpsel_s'); sel.innerHTML = ''; Object.keys(VPS).forEach(n => sel.add(new Option(n, n))); };
+/* au retour sur la page Calcul : relit le parc (sélection, fiches modifiées) */
+function refreshVps() {
+  VPS = window.Parc.usable();
+  if (!VPS[S.vp]) S.vp = Object.keys(VPS)[0];
+  adv._vp = null; fillVpSelect();
+}
+
 /* ---------- Panneau de réglages ---------- */
 function buildParams() {
   const box = $('params'); box.innerHTML = '';
@@ -55,7 +64,7 @@ function buildParams() {
     if (g.id === 'ecran') card.insertAdjacentHTML('beforeend', `<div class="chips"><button id="chain">🔗 Largeur / hauteur liées</button></div>`);
     box.append(card);
   }
-  const sel = $('vpsel_s'); Object.keys(VPS).forEach(n => sel.add(new Option(n, n)));
+  const sel = $('vpsel_s'); fillVpSelect();
   sel.onchange = () => { S.vp = sel.value; render(); };
   const cyc = d => { const k = Object.keys(VPS); S.vp = k[(k.indexOf(S.vp) + d + k.length) % k.length]; render(); };
   $('vprev').onclick = () => cyc(-1); $('vnext').onclick = () => cyc(1);
@@ -449,12 +458,12 @@ function attachDrag(id, axes) {
   const end = () => { if (!off) return; off = null; delete frozen[id]; render(); };
   svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
 }
-/* plein écran des vues côté / dessus */
+/* plein écran des vues face / côté / dessus */
 function toggleFull(card, on) {
   const want = on ?? !card.classList.contains('full');
   document.querySelectorAll('.viz .card.full').forEach(c => { c.classList.remove('full'); c.querySelector('.expand').textContent = '⤢'; });
-  const viz = $('viz'); viz.classList.remove('fs-side', 'fs-top', 'fs');
-  if (want) { viz.classList.add('fs'); card.classList.add('full'); card.querySelector('.expand').textContent = '✕'; viz.classList.add(card.classList.contains('side') ? 'fs-side' : 'fs-top'); }
+  const viz = $('viz'); viz.classList.remove('fs-side', 'fs-top', 'fs-face', 'fs');
+  if (want) { viz.classList.add('fs'); card.classList.add('full'); card.querySelector('.expand').textContent = '✕'; viz.classList.add(card.classList.contains('side') ? 'fs-side' : card.classList.contains('face') ? 'fs-face' : 'fs-top'); }
   requestAnimationFrame(render);
 }
 function drawHud() {
@@ -490,6 +499,8 @@ function render() {
   }
   $('vpsel_s').value = S.vp;
   $('vpinfo').textContent = `Ratio ${fm(v.rmin)}${v.zoomable ? ' – ' + fm(v.rmax) : ' (fixe)'} · ${v.fw}:${v.fh} · ${v.res} ${v.resW}×${v.resH} · ${fi(v.lm)} lm`;
+  $('vpinfo').classList.toggle('warn', !!(v.stdFields && v.stdFields.length));
+  if (v.stdFields && v.stdFields.length) $('vpinfo').textContent += ` · ⚠ valeurs standard : ${v.stdFields.join(', ').toLowerCase()}`;
   $('o_ratio').textContent = fm(G.ratioOf(v, S.zoom)) + ':1';
   document.querySelector('.row[data-k=zoom]').style.display = v.zoomable ? '' : 'none';
   $('chain').classList.toggle('on', effChain());
@@ -702,7 +713,7 @@ $('nav').onclick = e => {
   const calc = b.dataset.p === 'calc';
   ['locks', 'auto', 'detBtn'].forEach(id => $(id).style.display = calc ? '' : 'none');
   if (!calc) $('details').classList.remove('open');
-  if (calc) render();
+  if (calc) { refreshVps(); render(); }
 };
 addEventListener('resize', render);
 

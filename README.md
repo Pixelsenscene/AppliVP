@@ -4,7 +4,7 @@ Application web (future PWA) pour placer et choisir des vidéoprojecteurs face �
 (avec déformation en trapèze), pixels utiles / perdus, propositions de placement automatiques.
 Pensée d'abord pour l'**iPad** (paysage et portrait), utilisable aussi sur Mac et iPhone.
 
-> Version de travail : `1.1.2`. Les modules Projecteurs, Écrans, Projets et Réglages sont encore des pages vides.
+> Version de travail : `1.1.2`. Le module Projecteurs est en place ; Écrans, Projets et Réglages sont encore des pages vides.
 
 ## Utilisation
 
@@ -18,6 +18,12 @@ python3 -m http.server 8000      # puis ouvrir http://localhost:8000
 En ligne (GitHub Pages, une fois activé) : <https://pixelsenscene.github.io/AppliVP/>
 
 ## Fonctions
+
+- **Parc de projecteurs** (menu Projecteurs, `parc.js`) : liste + fiche complète par projecteur (identité, image, optique, divers),
+  toute donnée pouvant être inconnue. Ajout, modification, duplication, suppression, enregistrement (navigateur),
+  export / import JSON (fusion ou remplacement). Regroupement par famille, fabricant, propriétaire, technologie ou résolution ;
+  recherche et tri. Les données *nécessaires aux calculs* manquantes sont signalées, avec une valeur standard proposée
+  champ par champ ou d'un bloc. Les cases à cocher choisissent les projecteurs proposés dans la page Calcul.
 
 - **Faisceau réaliste** : le VP vise le centre de l'écran ; le faisceau est calculé en 3D puis projeté sur l'écran
   (rectangle, trapèze ou quadrilatère quelconque, avec angles A, B, C, D).

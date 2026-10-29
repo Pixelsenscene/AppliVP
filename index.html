@@ -64,7 +64,9 @@
           <div class="status" id="status"></div>
           <div class="warnBox hidden" id="warnBox"></div>
           <div class="viz" id="viz">
-            <div class="card face"><span class="tag" id="faceTag">Vue de face (écran)</span><div class="dragSel" id="dragSel"></div><svg id="svgFace"></svg>
+            <div class="card face"><span class="tag" id="faceTag">Vue de face (écran)</span><div class="dragSel" id="dragSel"></div><button class="expand"
+                title="Plein écran">⤢</button>
+              <div class="hud"></div><svg id="svgFace"></svg>
               <div class="legend"><span><i style="background:#3ecf8e"></i>pixels utiles</span><span><i
                     style="background:#ff5d5d"></i>pixels perdus</span><span><i style="background:#2b3440"></i>écran non
                   couvert</span></div>
@@ -82,10 +84,7 @@
         </div>
       </section>
 
-      <section class="page hidden" id="p-vp">
-        <h2>Parc de projecteurs</h2>
-        <p>Liste + fiche (ratio min/max, format, résolution, lumens, mode zoom/fixe). Remplace « Données VP ».</p>
-      </section>
+      <section class="page hidden" id="p-vp"></section>
       <section class="page hidden" id="p-ecran">
         <h2>Écrans</h2>
         <p>Bibliothèque d'écrans (dimensions, format, gain). Plus tard : inclinaison de l'écran.</p>
@@ -110,6 +109,7 @@
   </div>
   <script src="geometry.js"></script>
   <script src="data.js"></script>
+  <script src="parc.js"></script>
   <script src="app.js"></script>
 </body>
 
