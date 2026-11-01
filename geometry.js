@@ -76,8 +76,9 @@ function checkSetup(vp, S, ctx, r) {
    Manuelle (S.rot = {pan, tilt, roll}, en degrés) : pan > 0 vers +x, tilt > 0 vers le haut, roll autour de l'axe.
    pan = tilt = roll = 0 : axe perpendiculaire à l'écran, image droite. */
 const rad = d => d * Math.PI / 180;
-function autoAim(S) {                                      // angles équivalents à la visée automatique
-  const d = [-S.x, -S.y, S.sh / 2 - S.z];
+function autoAim(S) {                                      // angles pour viser S.aim (centre de l'écran si absent)
+  const T = S.aim || [0, S.sh / 2];                          // point visé sur l'écran (x, hauteur) : centre de l'écran par défaut
+  const d = [T[0] - S.x, -S.y, T[1] - S.z];
   return { pan: deg(Math.atan2(d[0], -d[1])), tilt: deg(Math.atan2(d[2], Math.hypot(d[0], d[1]))), roll: 0 };
 }
 

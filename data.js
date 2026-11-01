@@ -9,3 +9,16 @@ window.VP_DATA = {
   "VP1":      { rmin:2,    rmax:2.8,  fw:16, fh:9,  resW:1920, resH:1080, res:"Full HD", lm:5000, zoomable:true },
   "VP2":      { rmin:0.5,  rmax:0.5,  fw:16, fh:9,  resW:1920, resH:1080, res:"Full HD", lm:5000, zoomable:false }
 };
+
+
+/* Écrans proposés dans la page Calcul (liste de départ ; la bibliothèque complète viendra avec la page Écrans). Dimensions en mètres. */
+window.SCREEN_DATA = [
+  { id: 's169_2', name: '16:9', sw: 2,    sh: 1.125 },
+  { id: 's169_3', name: '16:9', sw: 3,    sh: 1.69 },
+  { id: 's169_4', name: '16:9', sw: 4,    sh: 2.25 },
+  { id: 's169_6', name: '16:9', sw: 6,    sh: 3.375 },
+  { id: 's169_8', name: '16:9', sw: 8,    sh: 4.5 },
+  { id: 's1610_3', name: '16:10', sw: 3.2, sh: 2 },
+  { id: 's43_3', name: '4:3', sw: 3,      sh: 2.25 },
+  { id: 's21_6', name: '21:9', sw: 6,     sh: 2.57 }
+];
