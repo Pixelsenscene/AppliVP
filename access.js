@@ -17,7 +17,7 @@
     hash: '57f694c3f184f37c93a65a749232ae9ff7381b72a03c985e3266e1d0137084fd',      // mot de passe par défaut : VPVPVP
     mail: 'pixelsenscene94@gmail.com',
   };
-  const VERSION = '1.1.6';      // version de l'application : à tenir à jour ici (elle figure dans la demande de mot de passe)
+  const VERSION = '1.1.7';      // version de l'application : à tenir à jour ici (elle figure dans la demande de mot de passe)
   const SALT = 'vp-access|', K_OK = 'vp.access.ok', K_ASK = 'vp.access.ask', K_SES = 'vp.access.session';
 
   /* SHA-256 (sans dépendance : crypto.subtle n'existe pas hors connexion sécurisée) */
