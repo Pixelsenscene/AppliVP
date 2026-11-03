@@ -607,9 +607,13 @@ header .toast.show{transform:none}
 .simVals[hidden]{display:none}
 .simVals em{font-style:normal;opacity:.9}
 .simVals b{font-variant-numeric:tabular-nums}
+.simTog{width:20px;height:20px;border-radius:50%;border:2px solid #07a61c;background:transparent;padding:0;flex:none;align-self:center;cursor:pointer;pointer-events:auto}
+.simTog.on{background:#07a61c;box-shadow:0 0 0 3px rgba(7,166,28,.25)}
+.simVals{align-items:center}
 .simBottom{display:none}
 .calc.cfg #simVals{display:none}
-.calc.cfg .simBottom:not([hidden]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px 14px;justify-items:center;grid-column:1/-1;grid-row:3}      /* vue compacte : 3 valeurs par ligne */
+.calc.cfg .simBottom:not([hidden]){display:flex;align-items:center;gap:10px;grid-column:1/-1;grid-row:3}
+.simBottom .simRow{flex:1;min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px 14px;justify-items:center}      /* vue compacte : 3 valeurs par ligne */
 .m .ck.on.c2{background:#93b509;border-color:#93b509}      /* à partir de la 4e case cochée */
 .simBottom{max-height:76px;overflow-y:auto;-webkit-overflow-scrolling:touch}      /* vue compacte : trop de valeurs → fenêtre à faire défiler */
 .simFull{display:none}
@@ -629,6 +633,11 @@ header .toast.show{transform:none}
 .simHead .shl{white-space:nowrap}
 .simHead select:disabled{opacity:.45}
 .simHead select{height:32px;max-width:230px;padding:0 8px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--txt);font-weight:600}
+.simNav{display:flex;gap:2px;flex:none}
+.simNav button{width:22px;height:22px;padding:0;border:0;background:transparent;border-radius:50%;display:grid;place-items:center;opacity:.8}
+.simNav button:hover:not(:disabled){opacity:1;background:rgba(7,166,28,.15)}
+.simNav button:disabled{opacity:.25}
+.simNav svg{width:16px;height:16px;fill:none;stroke:#07a61c;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .simSw{width:26px;height:26px;border-radius:50%;border:2px solid #07a61c;background:transparent;flex:none;padding:0}
 .simSw.on{background:#07a61c;box-shadow:0 0 0 3px rgba(7,166,28,.25)}
 /* petite fenêtre des configurations : avant-plan, fond flouté */
@@ -699,3 +708,11 @@ body.locked .app{visibility:hidden}
 .gateBox h1{color:#fff}
 .gateBox .gateSub{color:#fff;font-size:15px;margin:-10px 0 0}      /* collé au titre, en blanc ; la version en dessous reste grise */
 .gateVer{margin:2px 0 4px}
+
+/* Réglages : mention discrète en bas de page */
+#p-set{display:flex;flex-direction:column;min-height:100%;box-sizing:border-box}
+.credits{margin-top:auto;padding:28px 0 6px;text-align:center;font-size:11px;line-height:1.6;color:var(--mut);opacity:.55}
+.credits p{margin:0}
+.credits p:last-child{margin-top:8px}
+.credits .cr1{font-size:12.65px}      /* +15 % */
+.credits .cr2{font-size:8.8px}      /* −20 % */

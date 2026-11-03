@@ -937,7 +937,7 @@
     drawStatus(r);
     lastR = r;
     drawHud(); drawFace(r); drawSide(r); drawTop(r); drawKpis(r);
-    if ($('details').classList.contains('open')) renderDetails(r); else if (sim.checks.length) renderSim(buildDetails(r));
+    if ($('details').classList.contains('open')) renderDetails(r); else if (sim.checks.length) { if (simCfg.on) renderSim(buildDetails(r)); else renderSimOff(); }      // valeurs désactivées (bouton vert) et panneau fermé : aucun calcul de détail, l'application ne fait que le dessin
   }
 
   /* ---------- Auto : propositions ----------
@@ -1036,41 +1036,64 @@
   /* ---------- Valeurs cochées dans les lignes de calcul : affichées dans les simulations ----------
      Le mode se règle en haut de ∑ Calculs (bouton rond vert). Cases à cocher sans limite ; les 3 premières (par ordre de cochage) en vert #07a61c, les suivantes en #93b509.
      Chaque valeur cochée peut recevoir un nom (affiché à la place du texte bleu). Des configurations (A, B, C…) mémorisent une sélection + ses noms. */
-  const sim = { checks: [], names: {}, editing: null, draft: '', focusNm: false, FIRST: 3 };
+  const sim = { checks: [], names: {}, snap: {}, editing: null, draft: '', focusNm: false, FIRST: 3 };
   const simCfg = { on: false, current: '', cfgs: [{ id: 'A', name: 'Config A', items: [] }, { id: 'B', name: 'Config B', items: [] }, { id: 'C', name: 'Config C', items: [] }] };
   const simColor = ['#07a61c', '#93b509'];
   const SIM_KEY = 'vp.sim.v1';
   let simIdx = new Map();                                                // dernières lignes connues : clé → { name (texte bleu), val }
   const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  try { const j = JSON.parse(localStorage.getItem(SIM_KEY) || 'null'); if (j) { simCfg.on = !!j.on; simCfg.current = j.current || ''; if (Array.isArray(j.cfgs) && j.cfgs.length) simCfg.cfgs = j.cfgs; sim.checks = j.checks || []; sim.names = j.names || {}; } } catch (_) { /* pas de mémoire */ }
+  try { const j = JSON.parse(localStorage.getItem(SIM_KEY) || 'null'); if (j) { simCfg.on = !!j.on; simCfg.current = j.current || ''; if (Array.isArray(j.cfgs) && j.cfgs.length) simCfg.cfgs = j.cfgs; sim.checks = j.checks || []; sim.names = j.names || {}; sim.snap = j.snap || {}; } } catch (_) { /* pas de mémoire */ }
   ['A', 'B', 'C'].forEach((id, i) => { if (!simCfg.cfgs.some(c => c.id === id)) simCfg.cfgs.splice(i, 0, { id, name: 'Config ' + id, items: [] }); });      // Config A, B, C existent toujours : une mémoire où l'une manque (supprimée avant) la retrouve, vide
-  const simSave = () => { try { localStorage.setItem(SIM_KEY, JSON.stringify({ on: simCfg.on, current: simCfg.current, cfgs: simCfg.cfgs, checks: sim.checks, names: sim.names })); } catch (_) { /* stockage indisponible */ } };
+  const simSave = () => { try { localStorage.setItem(SIM_KEY, JSON.stringify({ on: simCfg.on, current: simCfg.current, cfgs: simCfg.cfgs, checks: sim.checks, names: sim.names, snap: sim.snap })); } catch (_) { /* stockage indisponible */ } };
   const IC = { ok: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', del: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/>', edit: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/>', add: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', sync: '<path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5"/>' };
   const ic = n => `<svg viewBox="0 0 24 24">${IC[n]}</svg>`;
   const simLabel = k => (simIdx.get(k) || {}).name || String(k).split('|')[1] || k;
   const simItem = (k, i) => { const o = simIdx.get(k); return `<span class="simItem" style="color:${simColor[i < sim.FIRST ? 0 : 1]}"><em>${esc(sim.names[k] || o.name)}</em> : <b>${o.val}</b></span>`; };
   function renderSim(tabs) {
     simIdx = new Map(); Object.values(tabs).forEach(T => (T.all || []).forEach(o => simIdx.set(o.sk, o)));
-    sim.checks = sim.checks.filter(k => simIdx.has(k));                  // une ligne qui n'existe plus (autres points sélectionnés…) est décochée
-    const first = simCfg.on ? sim.checks.slice(0, sim.FIRST).map(simItem).join('') : '', all = simCfg.on ? sim.checks.map(simItem).join('') : '';
+    /* Règle : une ligne cochée est conservée. Sa dernière valeur est mémorisée (sim.snap) ; si la ligne n'existe plus (points de VP à écran réinitialisés ou changés…), elle reste cochée et garde sa dernière valeur. Seul un décochage volontaire l'enlève. */
+    sim.checks.forEach(k => { const o = simIdx.get(k); if (o) sim.snap[k] = { ...sim.snap[k], name: o.name, val: o.val, f: o.f, cat: o.cat }; else if (sim.snap[k]) simIdx.set(k, { sk: k, ...sim.snap[k], kept: true }); });
+    sim.checks = sim.checks.filter(k => simIdx.has(k));                  // sans copie connue (ancienne mémoire), une ligne disparue ne peut être gardée
+    Object.keys(sim.snap).forEach(k => { if (!sim.checks.includes(k)) delete sim.snap[k]; });
+    simSave();
+    const tog = simTogHtml();      // bouton vert à gauche des valeurs : active / désactive la fonction (comme le bouton rond du haut de ∑ Calculs)
+    paintSim(tog, tog + (simCfg.on ? sim.checks.slice(0, sim.FIRST).map(simItem).join('') : ''), tog + (simCfg.on ? `<div class="simRow">${sim.checks.map(simItem).join('')}</div>` : ''));
+  }
+  const simTogHtml = () => sim.checks.length ? `<button type="button" class="simTog${simCfg.on ? ' on' : ''}" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations'}"></button>` : '';
+  const renderSimOff = () => { const t = simTogHtml(); paintSim(t, t, t); };      // valeurs désactivées : seul le bouton vert reste, sans aucun calcul
+  function paintSim(tog, first, all) {
     document.querySelectorAll('.viz .card').forEach(c => { if (!c.querySelector('.simFull')) { const d = document.createElement('div'); d.className = 'simFull'; c.append(d); } });
     document.querySelectorAll('.simFull').forEach(el => { el.innerHTML = first; });                           // vue agrandie : les 3 premières, en bas du grand graphique
     [['simVals', first], ['simVals2', all]].forEach(([id, html]) => { const el = $(id); if (el) { el.innerHTML = html; el.hidden = !html; } });      // vue principale : les 3 premières ; vue compacte : toutes, 3 par ligne
   }
+  document.addEventListener('click', e => { if (e.target.closest && e.target.closest('.simTog')) { simCfg.on = !simCfg.on; simChanged(); } });
   /* ---- configurations ---- */
   const cfgOf = id => simCfg.cfgs.find(c => c.id === id);
   const FIXED = ['A', 'B', 'C'];                                         // Config A, B, C : modifiables, jamais supprimables
-  const fromCurrent = () => sim.checks.map(sk => ({ sk, label: simLabel(sk), name: sim.names[sk] || '' }));
+  const fromCurrent = () => sim.checks.map(sk => ({ sk, label: simLabel(sk), name: sim.names[sk] || '', snap: sim.snap[sk] }));
   function simChanged() { simSave(); renderSimHead(); renderSimSettings(); render(); }
   function applyCfg(id) {
     const c = cfgOf(id); simCfg.current = id; sim.checks = []; sim.names = {}; sim.editing = null;
-    if (c) c.items.forEach(i => { sim.checks.push(i.sk); if (i.name) sim.names[i.sk] = i.name; });
+    if (c) c.items.forEach(i => { sim.checks.push(i.sk); if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = i.snap; });
     simChanged();
+  }
+  /* Flèches haut / bas à droite du menu des configurations : affichent une à une les lignes de la configuration en cours (onglet de la ligne ouvert, ligne sélectionnée, dessinée dans les vues) */
+  let simNav = -1;
+  function simStep(dir) {
+    const ks = sim.checks, n = ks.length; if (!n) return;
+    if (simNav < 0 || simNav >= n) simNav = dir > 0 ? -1 : 0;
+    simNav = ((simNav + dir) % n + n) % n;
+    const k = ks[simNav], t = k.split('|')[0], r = G.compute(vpOf(), S); if (!r || !r.valid) return;
+    let T = buildDetails(r)[t]; if (!T) return;
+    let i = T.rows.findIndex(x => x.sk === k);
+    if (i < 0 && t === 'vpe') { vpe.flt = ['', '']; T = buildDetails(r)[t]; i = T.rows.findIndex(x => x.sk === k); }      // ligne cachée par un filtre : on le lève
+    tab = t; selRow = i >= 0 ? i : 1; renderDetails(r); scrollToRow(selRow);
   }
   function renderSimHead() {
     const el = $('simHead'); if (!el) return;
     const opts = `<option value="">Choisir une configuration</option>${simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${c.id === simCfg.current ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}<option value="__add">＋ ajouter une config</option><option value="__manage">✎ modifier / supprimer une config</option>`;
-    el.innerHTML = `<button class="simSw${simCfg.on ? ' on' : ''}" id="simSw" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Désactiver les valeurs dans les simulations' : 'Activer les valeurs dans les simulations'}"></button><select id="simSel" aria-label="Configuration"${simCfg.on ? '' : ' disabled'}>${opts}</select>`;
+    el.innerHTML = `<button class="simSw${simCfg.on ? ' on' : ''}" id="simSw" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Désactiver les valeurs dans les simulations' : 'Activer les valeurs dans les simulations'}"></button><select id="simSel" aria-label="Configuration"${simCfg.on ? '' : ' disabled'}>${opts}</select><span class="simNav"><button type="button" data-n="-1" aria-label="Ligne précédente de la configuration" title="Ligne précédente de la configuration"${simCfg.on ? '' : ' disabled'}><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button><button type="button" data-n="1" aria-label="Ligne suivante de la configuration" title="Ligne suivante de la configuration"${simCfg.on ? '' : ' disabled'}><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></span>`;
+    el.querySelectorAll('.simNav button').forEach(b => { b.onclick = () => simStep(+b.dataset.n); });
     $('simSw').onclick = () => { simCfg.on = !simCfg.on; simChanged(); };
     const sel = $('simSel'); if (sel) sel.onchange = () => {
       const v = sel.value;
@@ -1114,8 +1137,8 @@
     else if (a === 'sync') { modal.items = fromCurrent(); drawSimModal(); }
     else if (a === 'save') {
       const nm = (modal.name || '').trim(); if (!nm) { const i = document.querySelector('#simModal .smName'); if (i) { i.classList.add('bad'); i.focus(); } return; }
-      const items = modal.items.map(i => ({ sk: i.sk, label: i.label, name: (i.name || '').trim() }));
-      if (modal.id) { const c = cfgOf(modal.id); c.name = nm; c.items = items; if (simCfg.current === c.id) { sim.checks = items.map(i => i.sk); sim.names = {}; items.forEach(i => { if (i.name) sim.names[i.sk] = i.name; }); } closeSimModal(); simChanged(); }
+      const items = modal.items.map(i => ({ sk: i.sk, label: i.label, name: (i.name || '').trim(), snap: i.snap }));
+      if (modal.id) { const c = cfgOf(modal.id); c.name = nm; c.items = items; if (simCfg.current === c.id) { sim.checks = items.map(i => i.sk); sim.names = {}; items.forEach(i => { if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = i.snap; }); } closeSimModal(); simChanged(); }
       else { const c = { id: 'c' + Date.now().toString(36), name: nm, items }; simCfg.cfgs.push(c); closeSimModal(); applyCfg(c.id); }
     }
   }
@@ -1326,6 +1349,7 @@
     return null;
   }
 
+  let vpeProbe = false;                                                  // vrai pendant le recalcul d'une ligne conservée avec ses propres points (voir plus bas)
   function buildDetails(r) {
     const v = vpOf(), Q = r.B.quad, q = r.q, N = ['A', 'B', 'C', 'D'], g = r.geo;
     const L = (n, f, val, hl = [], t) => ({ n, f, val, hl, t });      // t : intitulé affiché en jaune en haut du graphique (par défaut, le nom de la ligne)
@@ -1545,7 +1569,26 @@
         if (Math.hypot(...u2) > 0.3 && Math.hypot(...v2) > 0.3) row.rt.push({ k: 'rt', c: c2, u: u2, v: v2, vw: vi, pi: m.pi });
       }));
       row.sk = skV(rw); rowsV.push(row);
+      if (sim.checks.includes(row.sk)) sim.snap[row.sk] = { ...sim.snap[row.sk], hl: row.hl, rt: row.rt, t: row.t, val: row.val, x: !!rw.x, pts: vpe.pts.slice(), cust: vpe.custom.filter(c => vpe.pts.includes(c.id)).map(c => ({ ...c, p: c.p.slice() })) };      // ligne cochée : son dessin est gardé avec sa valeur
     });
+    /* Lignes conservées : recalculées en direct avec leurs propres points (mémorisés avec la ligne), même s'ils ne sont plus sélectionnés. Le calcul est refait une fois par jeu de points
+       en remplaçant provisoirement la sélection ; il met à jour la copie (valeur, dessin) de chaque ligne cochée de ce jeu. */
+    if (!vpeProbe) {
+      const groups = new Map();
+      sim.checks.forEach(k => { const o = sim.snap[k]; if (k.startsWith('vpe|') && o && o.pts && !allV.some(rw => skV(rw) === k)) { const g = o.pts.join(','); const e = groups.get(g); if (!e) groups.set(g, { ...o, x: !!o.x }); else if (o.x) e.x = true; } });
+      groups.forEach(o => {
+        if (!o.pts.every(id => (o.cust || []).some(c => c.id === id) || cat(id))) return;               // un point du catalogue n'existe plus : on garde la dernière copie
+        const save = { pts: vpe.pts, custom: vpe.custom, flt: vpe.flt, full: vpe.full, short: vpe.short, focus: vpe.focus, editing: vpe.editing, lastSig: vpe.lastSig, blink: vpe.blink };
+        Object.assign(vpe, { pts: o.pts.slice(), custom: (o.cust || []).map(c => ({ ...c, p: c.p.slice() })), flt: ['', ''], full: !!o.x, short: false, focus: null, editing: null });
+        vpeProbe = true;
+        try { buildDetails(r); } catch (_) { /* copie conservée telle quelle */ } finally { vpeProbe = false; Object.assign(vpe, save); }
+      });
+    }
+    const keptV = sim.checks.filter(k => k.startsWith('vpe|') && sim.snap[k] && !allV.some(rw => skV(rw) === k));      // lignes cochées de calculs précédents (autres points) : maintenues dans la liste, valeur figée, effaçables seulement en les décochant
+    if (keptV.length) {
+      rowsV.push({ sec: 'Lignes cochées conservées' });
+      keptV.forEach(k => { const o = sim.snap[k]; rowsV.push({ ...L(o.name, o.f || '', o.val, o.hl || [], o.t), sk: k, kept: true, rt: o.rt || [], d: '' });      }); /* cliquée, elle se dessine dans les vues comme une ligne ordinaire */
+    }
     if (vpe.focus) { const i = rowsV.findIndex(x => x.n === vpe.focus); if (i >= 0) selRow = i; vpe.focus = null; }
     const vpeView = kind => {
       const cands = [...CAT.filter(it => inV(it.id)), ...vpe.custom];                                          // les points créés par leurs coordonnées se touchent aussi (ils sont toujours sélectionnés)
@@ -1592,9 +1635,9 @@
     const ddItems = GRP.map((g, gi) => { const its = CAT.filter(it => it.g === gi && inV(it.id)); return its.length ? `<div class="ddg">${g}</div>` + its.map(it => `<div class="ddi${vpe.pts.includes(it.id) ? ' off' : ''}" data-v="${it.id}">${it.label}</div>`).join('') : ''; }).join('');      // tous les points (liste réduite ou non) ; ceux déjà pris sont grisés
     const sig = vpe.pts.join(',') + '|' + vpe.custom.map(c => c.p.join(';')).join(',');      // les points ont changé (ajout, retrait, coordonnées) : le contour du cadenas se remet à clignoter, jusqu'à ce qu'on appuie dessus
     if (sig !== vpe.lastSig) { vpe.lastSig = sig; vpe.blink = nV > 0; }
-    const locked = vpe.lock && nV > 0, nLines = rowsV.filter(x => !x.sec).length;
+    const locked = vpe.lock && nV > 0, nLines = rowsV.filter(x => !x.sec && !x.kept).length;
     tabs.vpe = {
-      all: fullV.map(rw => ({ sk: skV(rw), name: rw.n, val: fvV(rw.val) })),
+      all: fullV.map(rw => ({ sk: skV(rw), name: rw.n, val: fvV(rw.val), f: rw.f, cat: rw.cat })),
       label: 'VP à écran', views: KINDS.map(vpeView), rows: rowsV, legendName: shapeV ? shapeV.name : 'point',      // nom affiché dans la légende : la forme (2 points ou plus), sinon « point »
       below: `<div class="vchips">${nV ? vpe.pts.map((id, c) => `<button class="vchip" data-i="${c}" title="${locked ? 'Voir ses coordonnées' : 'Retirer ce point'}"><b>${LET[c]}</b> ${ptOf(id).short}${locked ? '' : ' ✕'}</button>`).join('') : ''}<span class="vhint">${nV ? `${nV} point${nV > 1 ? 's' : ''} sur ${VMAX} maximum` : 'Toucher un point dans l’une des vues'}</span><div class="dd vdd"><button class="ddb" type="button"${locked || nV >= VMAX ? ' disabled' : ''} title="Choisir un point dans la liste">Choisir un point</button><div class="ddl" hidden>${ddItems}</div></div><button class="vaddBtn${vpe.adding ? ' on' : ''}" id="vAdd"${locked || nV >= VMAX ? ' disabled' : ''} title="Créer un point à partir de ses coordonnées x, y, z" aria-label="Créer un point par ses coordonnées">+ x, y, z</button>${vpe.adding && !locked && nV < VMAX ? `<span class="vform">${['x', 'y', 'z'].map((a, k) => `<input id="v${a.toUpperCase()}" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="${a}" aria-label="${a}" value="${vpe.draft[k]}">`).join('')}<button class="hbtn vok" id="vOk">Ajouter</button></span>` : ''}<button class="vlockBtn${locked ? ' on' : ''}${vpe.blink && nV > 0 && !locked ? ' blink' : ''}" id="vLock"${nV ? '' : ' disabled'} aria-pressed="${locked}" title="${locked ? 'Points verrouillés : un appui sur un point affiche ses coordonnées (cliquer pour déverrouiller)' : 'Verrouiller les points sélectionnés'}" aria-label="Verrouiller les points sélectionnés"><svg viewBox="0 0 24 24">${locked ? '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>' : '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.6-1.7"/>'}</svg></button><button class="vlockBtn" id="vReset"${nV ? '' : ' disabled'} data-tip="Réinitialiser" aria-label="Réinitialiser"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.6-5.9"/><path d="M4 4.5V9h4.5"/></svg></button><span class="vgrow"></span><label class="vchk"><input type="checkbox" id="vShort"${vpe.short ? ' checked' : ''}${locked ? ' disabled' : ''}><span>Liste réduite</span></label></div>
         ${shapeV ? `<div class="vshape"><b>${shapeV.name}</b>${shapeV.warn.map(w => `<span class="twarn">⚠ ${w}</span>`).join('')}</div>` : ''}
