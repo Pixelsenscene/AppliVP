@@ -746,7 +746,7 @@
     }   // pas de cote si elle chevauche les lettres A/B ou le titre de la vue
     if (!isThumb(svg)) {                                                                  // nom du VP, discret : au pied de l'écran, en bas à droite, à l'extérieur
       const by = Math.max(sy + sH, F.Y(Math.min(...ys)));                                 // sous l'écran et sous le faisceau (lettres A–D comprises)
-      svg.append(el('text', { x: sx + sW, y: by + 36, 'text-anchor': 'end', fill: pcol('vp', GREY), 'font-size': 12, 'font-weight': 600, opacity: .8, class: 'vpName' }, S.vp));      // violet si le projecteur est verrouillé
+      svg.append(el('text', isBig(svg) ? { x: sx + sW / 2, y: by + 17, 'text-anchor': 'middle', fill: pcol('vp', GREY), 'font-size': 12, 'font-weight': 600, opacity: .8, class: 'vpName' } : { x: sx + sW, y: by + 36, 'text-anchor': 'end', fill: pcol('vp', GREY), 'font-size': 12, 'font-weight': 600, opacity: .8, class: 'vpName' }, S.vp));      // violet si le projecteur est verrouillé
     }
     const dm = dragMode();
     if (dm && !isThumb(svg)) {                                                       // poignée au centre de l'image : glisser = déplacer le faisceau
@@ -872,12 +872,14 @@
     svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
   }
   /* plein écran des vues face / côté / dessus */
+  let backToCompact = false;                                             // plein écran demandé depuis la vue compacte : en sortir ramène à la vue compacte
   function toggleFull(card, on) {
     const want = on ?? !card.classList.contains('full');
     document.querySelectorAll('.viz .card.full').forEach(c => { c.classList.remove('full'); c.querySelector('.expand').textContent = '⤢'; });
     const viz = $('viz'); viz.classList.remove('fs-side', 'fs-top', 'fs-face', 'fs');
     if (want) { viz.classList.add('fs'); card.classList.add('full'); card.querySelector('.expand').textContent = '✕'; viz.classList.add(card.classList.contains('side') ? 'fs-side' : card.classList.contains('face') ? 'fs-face' : 'fs-top'); }
     dockAuto();
+    if (!want && backToCompact) { backToCompact = false; if (!$('p-calc').classList.contains('cfg')) $('cfgBtn').click(); }
     requestAnimationFrame(render);
   }
   /* le bouton Auto (avec son curseur, son message et sa note) passe dans la grande vue en bas à gauche quand une vue est agrandie, puisque la barre du haut est alors recouverte ; il retourne à sa place ensuite */
@@ -1057,16 +1059,22 @@
     Object.keys(sim.snap).forEach(k => { if (!sim.checks.includes(k)) delete sim.snap[k]; });
     simSave();
     const tog = simTogHtml();      // bouton vert à gauche des valeurs : active / désactive la fonction (comme le bouton rond du haut de ∑ Calculs)
-    paintSim(tog, tog + (simCfg.on ? sim.checks.slice(0, sim.FIRST).map(simItem).join('') : ''), tog + (simCfg.on ? `<div class="simRow">${sim.checks.map(simItem).join('')}</div>` : ''));
+    paintSim(tog, simCfg.on ? sim.checks.slice(0, sim.FIRST).map(simItem).join('') : '', (simCfg.on ? `<div class="simRow">${sim.checks.map(simItem).join('')}</div>` : ''));
   }
   const simTogHtml = () => sim.checks.length ? `<button type="button" class="simTog${simCfg.on ? ' on' : ''}" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations'}"></button>` : '';
-  const renderSimOff = () => { const t = simTogHtml(); paintSim(t, t, t); };      // valeurs désactivées : seul le bouton vert reste, sans aucun calcul
-  function paintSim(tog, first, all) {
+  const renderSimOff = () => { const t = simTogHtml(); paintSim(t, '', ''); };      // valeurs désactivées : seul le bouton vert reste, sans aucun calcul
+  function paintSim(tog, first, all) {      // tog : bouton vert (dans la bande du haut ; repris dans les vues agrandies) ; first : valeurs de la vue principale ; all : valeurs de la vue compacte
+    const top = $('simTopTog'); if (top) { top.hidden = !tog; top.classList.toggle('on', simCfg.on); top.setAttribute('aria-pressed', String(simCfg.on)); top.title = simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations'; }
     document.querySelectorAll('.viz .card').forEach(c => { if (!c.querySelector('.simFull')) { const d = document.createElement('div'); d.className = 'simFull'; c.append(d); } });
+    document.querySelectorAll('.viz .card').forEach(c => {                                                   // vue agrandie : bouton vert placé au-dessus du bouton Auto (bas gauche) ; il n'est montré que dans la vue agrandie (CSS)
+      let b = c.querySelector('.simFullTog'); if (!b) { b = document.createElement('button'); b.type = 'button'; b.className = 'simTog simFullTog'; b.setAttribute('aria-label', 'Valeurs dans les simulations'); c.append(b); }
+      b.hidden = !tog; b.classList.toggle('on', simCfg.on); b.setAttribute('aria-pressed', String(simCfg.on)); b.title = simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations';
+    });
     document.querySelectorAll('.simFull').forEach(el => { el.innerHTML = first; });                           // vue agrandie : les 3 premières, en bas du grand graphique
     [['simVals', first], ['simVals2', all]].forEach(([id, html]) => { const el = $(id); if (el) { el.innerHTML = html; el.hidden = !html; } });      // vue principale : les 3 premières ; vue compacte : toutes, 3 par ligne
   }
-  document.addEventListener('click', e => { if (e.target.closest && e.target.closest('.simTog')) { simCfg.on = !simCfg.on; simChanged(); } });
+  document.addEventListener('click', e => { if (e.target.closest && e.target.closest('.simTog, .simVals .simItem, .simFull .simItem')) {      // un appui sur le texte vert agit comme l'interrupteur (il passe sur OFF)
+       simCfg.on = !simCfg.on; simChanged(); } });
   /* ---- configurations ---- */
   const cfgOf = id => simCfg.cfgs.find(c => c.id === id);
   const FIXED = ['A', 'B', 'C'];                                         // Config A, B, C : modifiables, jamais supprimables
@@ -1090,6 +1098,7 @@
     tab = t; selRow = i >= 0 ? i : 1; renderDetails(r); scrollToRow(selRow);
   }
   function renderSimHead() {
+    $('detBtn').classList.toggle('simOff', !simCfg.on);      // contour du bouton ∑ Calculs assombri quand l'interrupteur est sur OFF
     const el = $('simHead'); if (!el) return;
     const opts = `<option value="">Choisir une configuration</option>${simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${c.id === simCfg.current ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}<option value="__add">＋ ajouter une config</option><option value="__manage">✎ modifier / supprimer une config</option>`;
     el.innerHTML = `<button class="simSw${simCfg.on ? ' on' : ''}" id="simSw" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Désactiver les valeurs dans les simulations' : 'Activer les valeurs dans les simulations'}"></button><select id="simSel" aria-label="Configuration"${simCfg.on ? '' : ' disabled'}>${opts}</select><span class="simNav"><button type="button" data-n="-1" aria-label="Ligne précédente de la configuration" title="Ligne précédente de la configuration"${simCfg.on ? '' : ' disabled'}><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button><button type="button" data-n="1" aria-label="Ligne suivante de la configuration" title="Ligne suivante de la configuration"${simCfg.on ? '' : ' disabled'}><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></span>`;
@@ -1159,6 +1168,7 @@
   const TRI = '#a855f7', TRI_FILL = 'rgba(168,85,247,.28)', SCREEN = '#ff5d5d', BEAM = '#4da3ff';
   /* affichage réglages : réglages en grand sur 2 colonnes, les 3 vues en petit sur une ligne au-dessus, bandeau d'indicateurs réduit */
   $('cfgBtn').onclick = () => {
+    backToCompact = false;
     document.querySelectorAll('.viz .card.full').forEach(c => toggleFull(c, false));
     const on = $('p-calc').classList.toggle('cfg'); $('cfgBtn').textContent = on ? 'Vue principale' : 'vue compacte';
     requestAnimationFrame(render);
@@ -1988,7 +1998,7 @@
   buildParams(); buildLockPills(); syncRot();
   $('title').style.display = 'none';                 // page Calcul au démarrage
   attachDrag('svgSide', ['y', 'z']); attachDrag('svgTop', ['x', 'y']); renderSimHead(); renderSimSettings(); attachFaceDrag(); attachDisp(); attachDispView('dispSelSide', 'svgSide', false); attachDispView('dispSelTop', 'svgTop', true);
-  document.querySelectorAll('.expand').forEach(b => b.onclick = () => toggleFull(b.closest('.card')));
+  document.querySelectorAll('.expand').forEach(b => b.onclick = () => { const card = b.closest('.card'); if ($('p-calc').classList.contains('cfg')) { $('cfgBtn').click(); toggleFull(card, true); backToCompact = true; return; } toggleFull(card); });      // en vue compacte : on en sort, puis la vue passe en plein écran
   $('viz').addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) { locks[c.dataset.k] = !locks[c.dataset.k]; render(); } });
   addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.card.full').forEach(c => toggleFull(c, false)); });
   render();

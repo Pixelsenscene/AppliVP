@@ -31,18 +31,25 @@
   </div>
   <div class="app">
     <nav id="nav">
-      <button data-p="calc" class="on"><svg viewBox="0 0 24 24">
-          <rect x="3" y="5" width="18" height="11" rx="1.5" />
-          <path d="M8 20h8M12 16v4" />
-        </svg><span>Calcul</span></button>
+      <button data-p="calc" class="on" aria-label="VP" title="VP : modélisation"><svg class="vpIcon"
+          viewBox="0 0 44 40">
+          <path d="M3 4 22 33 41 4" />
+          <path class="vpTop" d="M3 4H41" stroke="#54667a" stroke-width=".9" stroke-linecap="butt" />
+          <rect class="vpBase" x="16" y="29.5" width="12" height="9" rx="1.6" fill="#4da3ff" stroke="#4da3ff" />
+          <text x="22" y="19" text-anchor="middle" fill="currentColor" stroke="none" font-size="11.5" font-weight="800"
+            font-family="inherit">VP</text>
+        </svg></button>
       <button data-p="vp"><svg viewBox="0 0 24 24">
           <rect x="3" y="8" width="18" height="9" rx="2" />
           <circle cx="15" cy="12.5" r="2.5" />
           <path d="M6 17v2M18 17v2" />
         </svg><span>Projecteurs</span></button>
       <button data-p="ecran"><svg viewBox="0 0 24 24">
-          <rect x="2.5" y="4" width="19" height="12" rx="1" />
-          <path d="M8 20h8" />
+          <rect x="4.5" y="7" width="15" height="10" />
+          <circle cx="4.5" cy="7" r="1.7" fill="currentColor" stroke="none" />
+          <circle cx="19.5" cy="7" r="1.7" fill="currentColor" stroke="none" />
+          <circle cx="4.5" cy="17" r="1.7" fill="currentColor" stroke="none" />
+          <circle cx="19.5" cy="17" r="1.7" fill="currentColor" stroke="none" />
         </svg><span>Écrans</span></button>
       <button data-p="proj"><svg viewBox="0 0 24 24">
           <path d="M4 6h16M4 12h16M4 18h10" />
@@ -88,6 +95,8 @@
         <div class="hsp"></div>
         <button class="txtlink" id="cfgBtn" title="Vue compacte : vues en petit au-dessus, réglages sur 2 colonnes">vue
           compacte</button>
+        <button type="button" class="simTog" id="simTopTog" aria-label="Valeurs dans les simulations"
+          aria-pressed="false" hidden></button>
         <button class="hbtn" id="detBtn">∑ Calculs</button>
       </header>
 

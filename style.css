@@ -418,7 +418,8 @@ header .toast.show{transform:none}
 .calc.cfg .viz{grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr;flex:none;height:clamp(120px,24vh,230px);gap:8px}
 .calc.cfg .viz .card.face,.calc.cfg .viz .card.side,.calc.cfg .viz .card.top{grid-row:1;grid-column:auto}
 .calc.cfg .viz .side,.calc.cfg .viz .top{display:block}
-.calc.cfg .expand,.calc.cfg .legend,.calc.cfg .results{display:none}
+.calc.cfg .legend,.calc.cfg .results{display:none}
+.calc.cfg .expand{top:4px;right:4px;width:26px;height:26px;border-radius:8px;font-size:13px;padding:0}      /* vue compacte : petit bouton plein écran en haut à droite de chaque vue */
 .calc.cfg .card h2{font-size:10.5px}
 .calc.cfg .row{margin-top:3px}
 .calc.cfg .row label{font-size:11.5px}
@@ -507,7 +508,7 @@ header .toast.show{transform:none}
 
 /* bouton Auto + note : dans la barre du haut, ou en bas à gauche de la grande vue quand une vue est agrandie */
 .autoDock{display:flex;align-items:center;gap:10px;min-width:0}
-.card.full .autoDock{position:absolute;left:12px;bottom:12px;z-index:6;gap:0}
+.card.full .autoDock{position:absolute;left:15px;bottom:12px;z-index:6;gap:0}
 .card.full .autoDock .toast,.card.full .autoDock .toast.show{left:0;top:auto;bottom:calc(100% + 6px);transform:none;font-size:13px;padding:7px 14px}
 .card.full .autoDock .autoMsg{top:auto;bottom:-2px}
 /* vue de face agrandie : « Écran couvert » et « Pixels perdus » se décalent à droite du bouton */
@@ -617,7 +618,7 @@ header .toast.show{transform:none}
 .m .ck.on.c2{background:#93b509;border-color:#93b509}      /* à partir de la 4e case cochée */
 .simBottom{max-height:76px;overflow-y:auto;-webkit-overflow-scrolling:touch}      /* vue compacte : trop de valeurs → fenêtre à faire défiler */
 .simFull{display:none}
-.viz .card.full .simFull:not(:empty){display:flex;flex-wrap:wrap;justify-content:center;gap:2px 22px;position:absolute;left:100px;right:230px;bottom:80px;z-index:3;font-size:14px;font-weight:600;color:#07a61c;pointer-events:none;text-shadow:0 0 4px #0f1216,0 0 4px #0f1216}      /* vue agrandie : 3 premières valeurs, au-dessus du bouton Auto et des indicateurs */
+.viz .card.full .simFull:not(:empty){display:flex;flex-wrap:wrap;justify-content:center;gap:2px 22px;position:absolute;left:120px;right:120px;bottom:98px;z-index:3;font-size:14px;font-weight:600;color:#07a61c;pointer-events:none;text-shadow:0 0 4px #0f1216,0 0 4px #0f1216}      /* vue agrandie : 3 premières valeurs, au-dessus du bouton Auto et des indicateurs */
 .viz.fs + .simVals{display:none}
 .m{cursor:pointer}
 /* nom d'une valeur cochée */
@@ -716,3 +717,25 @@ body.locked .app{visibility:hidden}
 .credits p:last-child{margin-top:8px}
 .credits .cr1{font-size:12.65px}      /* +15 % */
 .credits .cr2{font-size:8.8px}      /* −20 % */
+#simTopTog[hidden]{display:none}
+.simFullTog{display:none}
+.viz .card.full .simFullTog:not([hidden]){display:block;position:absolute;left:35px;bottom:80px;z-index:6}      /* vue agrandie : au-dessus du bouton octogonal Auto */
+
+
+/* Interrupteurs verts (valeurs dans les simulations) : croissant vertical qui épouse le bord gauche arrondi du bouton ∑ Calculs (écart de 3 px), sans texte.
+   La pastille est portée par un bras qui tourne autour du centre de l'arrondi du bouton : elle suit donc exactement la courbe quand on bascule.
+   OFF : contour vert seul, pastille blanche en bas · ON : fond vert en plus, pastille sombre en haut */
+#detBtn,#detBtn.on{border:2px solid #07a61c}
+#detBtn.simOff,#detBtn.simOff.on{border-color:#0b5a1a}      /* valeurs désactivées (interrupteur OFF) : contour du bouton et de l'interrupteur assombris */
+.simSw,.simTog{position:relative;display:block;width:16px;height:44px;padding:0;border:0;border-radius:0;box-shadow:none;background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 44'%3E%3Cmask id='m' maskUnits='userSpaceOnUse' x='0' y='0' width='16' height='44'%3E%3Cpath d='M9.63 7.45A31 31 0 0 0 9.63 36.55' fill='none' stroke='white' stroke-width='12' stroke-linecap='round'/%3E%3Cpath d='M9.63 7.45A31 31 0 0 0 9.63 36.55' fill='none' stroke='black' stroke-width='8' stroke-linecap='round'/%3E%3C/mask%3E%3Cpath d='M9.63 7.45A31 31 0 0 0 9.63 36.55' fill='none' stroke='%230b5a1a' stroke-width='12' stroke-linecap='round' mask='url(%23m)'/%3E%3C/svg%3E") no-repeat center/16px 44px;flex:none;cursor:pointer;pointer-events:auto;align-self:center}
+.simSw.on,.simTog.on{box-shadow:none;background-color:transparent;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 44'%3E%3Cpath d='M9.63 7.45A31 31 0 0 0 9.63 36.55' fill='none' stroke='%2307a61c' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E")}
+.simSw::after,.simTog::after{content:"";position:absolute;left:2.5px;top:18.5px;width:7px;height:7px;border-radius:50%;background:#fff;transform-origin:34.5px 3.5px;transform:rotate(-24deg);transition:transform .22s ease,background .22s}
+.simSw.on::after,.simTog.on::after{background:#0f1216;transform:rotate(24deg)}
+#simTopTog{margin-right:-11px}      /* l'écart de 10 px de la barre + 1 px : le bord gauche du bouton Calculs est à 3 px de la courbe */
+.viz .card.full .simFullTog:not([hidden]){left:3px;bottom:19px}      /* vue agrandie : à gauche du bouton octogonal Auto, courbe vers lui (presque imbriqués) */
+nav button .vpIcon{width:50px;height:46px;stroke-width:1.9}      /* icône VP : faisceau ouvert, ligne du haut en pointillés, texte dans le triangle */
+nav button:not(.on) .vpTop{stroke:currentColor}      /* icône VP non sélectionnée : tout en gris, comme les autres menus */
+nav button:not(.on) .vpBase{fill:currentColor;stroke:currentColor}
+nav button.on{box-shadow:inset 0 0 0 1.5px var(--acc)}      /* menu sélectionné : contour bleu */
+.viz.fs .card:not(.full) .simFullTog:not([hidden]){display:block;position:absolute;right:45px;top:1px;z-index:6}      /* petites vues de la colonne de droite du plein écran : à gauche de leur bouton plein écran, courbe vers lui */
+.simVals .simItem,.simFull .simItem{cursor:pointer;pointer-events:auto}      /* texte vert cliquable : un appui désactive les valeurs (le texte de la vue agrandie laisse sinon passer les appuis vers le dessin) */
