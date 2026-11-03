@@ -198,11 +198,27 @@ function overlap(Q, S) {
   return { inter, aq, as, ai, iou: ai / (aq + as - ai) };
 }
 
+/* Écran couvert : règle stricte, sans seuil. Le faisceau est un quadrilatère convexe (projection d'un rectangle), donc
+   l'écran est entièrement dans le faisceau ssi ses 4 coins le sont, bords compris : dès qu'une partie de l'écran sort,
+   aucun côté du faisceau ne peut avoir tout l'écran du bon côté. COVER_EPS (1 nm) n'absorbe que l'erreur d'arrondi
+   quand le faisceau est calé exactement sur l'écran. */
+const COVER_EPS = 1e-9;
+function covers(Q, S) {
+  let s = 0;
+  for (let i = 0; i < 4; i++) { const a = Q[i], b = Q[(i+1)%4]; s += a[0]*b[1] - b[0]*a[1]; }
+  if (!(Math.abs(s) > 1e-12)) return false;                                  // faisceau dégénéré
+  const o = Math.sign(s), corners = [[-S.sw/2, 0], [S.sw/2, 0], [S.sw/2, S.sh], [-S.sw/2, S.sh]];
+  return corners.every(p => Q.every((a, i) => {
+    const b = Q[(i+1)%4], l = Math.hypot(b[0]-a[0], b[1]-a[1]) || 1e-12;
+    return o * ((b[0]-a[0])*(p[1]-a[1]) - (b[1]-a[1])*(p[0]-a[0])) / l >= -COVER_EPS;   // coin du bon côté du côté AB, BC, CD, DA
+  }));
+}
+
 /* ---------- Calcul complet ---------- */
 function compute(vp, S) {
   const B = computeBeam(vp, S);
   if (!B.valid) return { valid: false };
-  const ov = overlap(B.quad, S), q = quadStats(B.quad);
+  const ov = overlap(B.quad, S), q = quadStats(B.quad), covered = covers(B.quad, S);
   const pan = p => toPanel(B, vp, p[0], p[1]);
   const pArea = poly => poly.length > 2 ? area(poly.map(pan)) : 0;
   const total = vp.resW * vp.resH, useful = pArea(ov.inter);
@@ -231,77 +247,132 @@ function compute(vp, S) {
   const px = { total, useful, lost: Math.max(0, total-useful), byside: lost, bbox,
     usefulPoly: uP, lostPct: Math.max(0, 100*(total-useful)/total), usefulPct: Math.min(100, 100*useful/total),
     perM2: ov.ai > 0 ? useful/ov.ai : 0, pixelMm: ov.ai > 0 ? 1000*Math.sqrt(ov.ai/useful) : 0 };
-  const uncovered = Math.max(0, ov.as - ov.ai);
-  return { valid:true, B, q, ov, geo, scr, px, ratio:B.ratio, uncovered, uncoveredPct:100*uncovered/ov.as,
+  const uncovered = covered ? 0 : Math.max(0, ov.as - ov.ai);                 // aire d'écran hors faisceau : information, ne décide pas du verdict
+  return { valid:true, B, q, ov, geo, scr, px, ratio:B.ratio, covered, uncovered, uncoveredPct:100*uncovered/ov.as,
            lux: vp.lm / q.area, panelOf: pan };
 }
 
-/* ---------- Recherche automatique ---------- */
+/* ---------- Auto ----------
+   · Auto ne fait varier que la position du VP (y, x, z), et seulement les paramètres libres. Il ne touche jamais à l'écran,
+     au projecteur, au zoom ni à l'optique avancée, et il vise toujours le centre de l'écran.
+   · Priorité 1 : l'écran est couvert (règle stricte, voir covers). Priorité 2 : le moins de pixels perdus possible.
+   · Les propositions sont sensiblement différentes entre elles (écart de position).
+   · Si aucune position ne couvre l'écran, on cherche quels verrous de position en sont la cause. */
 const clamp = (v, [a,b]) => Math.max(a, Math.min(b, v));
-function score(vps, S) {
-  const B = computeBeam(vps[S.vp], S);
-  return B.valid ? overlap(B.quad, S).iou : -1;
+const POS = ['y', 'x', 'z'];
+const gauss = () => Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
+
+/* S0 placé en `pos`, VP visant le centre de l'écran (avec une orientation manuelle, seul le roll est conservé) */
+function aimedAt(S0, pos) {
+  const S = { ...S0, ...pos, aim: null };
+  S.rot = S0.rot ? { ...autoAim(S), roll: S0.rot.roll || 0 } : null;
+  return S;
 }
-function freeKeys(vp, locks, chain) {
-  const ks = [];
-  for (const k of ['y','x','z']) if (!locks[k]) ks.push(k);
-  if (vp.zoomable && !locks.zoom) ks.push('zoom');
-  if (!locks.sw) ks.push('sw');
-  if (!locks.sh && !chain) ks.push('sh');
-  return ks;
+/* f : à minimiser. Écran couvert → pixels perdus (< 100). Sinon 100 + part d'écran non couverte : guide la recherche vers la couverture. */
+function tryPos(vp, S0, pos) {
+  const S = aimedAt(S0, pos), B = computeBeam(vp, S);
+  if (!B.valid) return { f: 1e6, covered: false, lost: 100 };
+  const ov = overlap(B.quad, S), covered = covers(B.quad, S), total = vp.resW * vp.resH;
+  const useful = ov.inter.length > 2 ? area(ov.inter.map(p => toPanel(B, vp, p[0], p[1]))) : 0;
+  const lost = Math.max(0, 100 * (total - useful) / total);
+  return { covered, lost, f: covered ? lost : 100 + 100 * Math.max(0, ov.as - ov.ai) / ov.as };
 }
-function withChain(S, k, chain, aspect) {
-  if (chain && k === 'sw') S.sh = clamp(S.sw / aspect, RANGES.sh);
+
+/* écart entre deux positions, en « écarts significatifs » : 1 = clairement différentes (recul : ±15 %, centrage : ¼ de la largeur d'écran, hauteur : ⅓ de la hauteur d'écran) */
+const diffScale = S0 => ({ x: Math.max(0.6, 0.25 * S0.sw), z: Math.max(0.35, 0.3 * S0.sh) });
+function posDist(a, b, keys, sc) {
+  let m = 0;
+  for (const k of keys) m = Math.max(m, k === 'y' ? Math.abs(Math.log(a.y / b.y)) / 0.15 : Math.abs(a[k] - b[k]) / sc[k]);
+  return m;
 }
-function localSearch(vps, S0, keys, chain, aspect, iters) {
-  let S = { ...S0 }, best = score(vps, S);
-  const step = {}; keys.forEach(k => step[k] = (RANGES[k][1]-RANGES[k][0]) * 0.12);
-  for (let it = 0; it < iters; it++) {
-    let moved = false;
-    for (const k of keys) for (const dir of [-1, 1]) {
-      const T = { ...S }; T[k] = clamp(S[k] + dir*step[k], RANGES[k]); withChain(T, k, chain, aspect);
-      const sc = score(vps, T);
-      if (sc > best + 1e-9) { S = T; best = sc; moved = true; }
-    }
-    if (!moved) keys.forEach(k => step[k] *= 0.5);
+
+const EFFORT = { main: { seeds: 28, iters: 40, grid: { y: 40, x: 21, z: 21 } }, light: { seeds: 8, iters: 28, grid: { y: 24, x: 11, z: 11 } } };
+
+/* position arrondie au centimètre (ce que l'interface affiche) qui couvre toujours l'écran : on essaie les arrondis voisins */
+function snapCovered(vp, S0, pos, keys, ranges) {
+  for (const extra of [0, 1]) {
+    const opts = keys.map(k => { const v = pos[k] * 100, lo = Math.floor(v) - extra, hi = Math.ceil(v) + extra, o = [];
+      for (let i = lo; i <= hi; i++) o.push(clamp(i / 100, ranges[k])); return o; });
+    let best = null;
+    const walk = (i, cur) => {
+      if (i === keys.length) { const t = tryPos(vp, S0, cur); if (t.covered && (!best || t.lost < best.lost)) best = { pos: { ...cur }, lost: t.lost }; return; }
+      for (const v of opts[i]) walk(i + 1, { ...cur, [keys[i]]: v });
+    };
+    walk(0, { ...pos });
+    if (best) return best;
   }
-  return { S, score: best, keys };
+  return null;
 }
-/* Jusqu'à `max` propositions voisines de l'optimum (meilleure surface commune faisceau/écran),
-   différentes entre elles sur les paramètres libres. */
-function autoProposals(vps, S0, locks, chain, aspect, max = 3, starts = 36) {
-  const cands = [];
-  const names = locks.vp ? [S0.vp] : Object.keys(vps);
-  for (const name of names) {
-    const keys = freeKeys(vps[name], locks, chain);
-    if (!keys.length) continue;
-    for (let i = 0; i < starts; i++) {
-      const S = { ...S0, vp: name };
-      if (i > 0) for (const k of keys) { S[k] = RANGES[k][0] + Math.random() * (RANGES[k][1]-RANGES[k][0]); withChain(S, k, chain, aspect); }
-      cands.push(localSearch(vps, S, keys, chain, aspect, 28));
-    }
-  }
-  if (!cands.length) return [];
-  cands.sort((a, b) => b.score - a.score);
-  const best = cands[0].score;
-  // « écart significatif » par paramètre ; le zoom est ignoré (il compense le recul)
-  const SCALE = { x:1.5, y:6, z:0.7, zoom:1e9, sw:2, sh:1.5 };
-  const dist = (a, b) => {
-    if (a.S.vp !== b.S.vp) return 9;
-    const ks = new Set([...a.keys, ...b.keys]); let m = 0;
-    ks.forEach(k => m = Math.max(m, Math.abs(a.S[k]-b.S[k]) / SCALE[k]));
-    return m;
+
+/* positions qui couvrent l'écran en ne faisant varier que `keys` : grille grossière, puis affinage aléatoire autour des meilleures cases */
+function findCovering(vp, S0, keys, ranges, effort) {
+  const sc = diffScale(S0), cur = { y: S0.y, x: S0.x, z: S0.z };
+  if (!keys.length) { const t = tryPos(vp, S0, cur); return t.covered ? [{ pos: cur, lost: t.lost }] : []; }      // rien de libre : la position actuelle ou rien
+  const axis = k => {
+    if (!keys.includes(k)) return [S0[k]];
+    const [a, b] = ranges[k], n = effort.grid[k], v = [clamp(S0[k], ranges[k])];
+    for (let i = 0; i < n; i++) v.push(k === 'y' ? a * (b / a) ** (i / (n - 1)) : a + (b - a) * i / (n - 1));
+    return v;
   };
-  for (const tol of [0.04, 0.08, 0.15, 1]) {
-    const pool = cands.filter(c => c.score >= best - tol), picked = [pool[0]];
-    while (picked.length < max) {
-      let far = null, farD = 0.5;                              // farthest-point : on cherche la proposition la plus différente
-      for (const c of pool) { const d = Math.min(...picked.map(p => dist(p, c))); if (d > farD) { far = c; farD = d; } }
-      if (!far) break; picked.push(far);
-    }
-    if (picked.length === max || tol === 1) return picked;
+  const cells = [];
+  for (const y of axis('y')) for (const x of axis('x')) for (const z of axis('z')) { const pos = { y, x, z }; cells.push({ pos, f: tryPos(vp, S0, pos).f }); }
+  cells.sort((a, b) => a.f - b.f);
+  const seeds = [];
+  for (const c of cells) {                                    // meilleures cases, espacées entre elles pour couvrir des zones différentes
+    if (seeds.length >= effort.seeds || c.f >= 1e6) break;
+    if (seeds.every(s => posDist(s.pos, c.pos, keys, sc) >= 1)) seeds.push(c);
   }
-  return [];
+  const out = [], seen = new Set();
+  for (const seed of seeds) {
+    let pos = { ...seed.pos }, f = seed.f;
+    const step = {}; for (const k of keys) step[k] = k === 'y' ? 0.08 : (ranges[k][1] - ranges[k][0]) * 0.04;
+    for (let it = 0; it < effort.iters; it++) {
+      let up = false;
+      for (let j = 0; j < 8; j++) {
+        const q = { ...pos };
+        for (const k of keys) q[k] = clamp(k === 'y' ? pos.y * Math.exp(step.y * gauss()) : pos[k] + step[k] * gauss(), ranges[k]);
+        const t = tryPos(vp, S0, q); if (t.f < f) { pos = q; f = t.f; up = true; }
+      }
+      for (const k of keys) step[k] *= up ? 1.1 : 0.6;
+      if (keys.every(k => step[k] < (k === 'y' ? 1e-4 : 1e-4 * (ranges[k][1] - ranges[k][0])))) break;
+    }
+    if (f >= 100) continue;                                   // cette zone ne couvre pas l'écran
+    const s = snapCovered(vp, S0, pos, keys, ranges);
+    if (!s) continue;
+    const id = keys.map(k => s.pos[k]).join('|'); if (seen.has(id)) continue; seen.add(id);
+    out.push({ pos: { ...cur, ...s.pos }, lost: s.lost });
+  }
+  return out;
+}
+
+/* jusqu'à n positions, la meilleure d'abord, puis les meilleures suivantes qui en sont sensiblement différentes
+   (l'écart exigé diminue seulement s'il n'y en a pas assez). `avoid` : positions déjà vues, jamais reproposées. */
+function pickDifferent(cands, n, keys, sc, avoid = []) {
+  const sorted = cands.slice().sort((a, b) => a.lost - b.lost), picked = [], ref = avoid.slice();
+  for (const t of [1, 0.6, 0.35, 0.2, 0.1]) {
+    for (const c of sorted) {
+      if (picked.length >= n) break;
+      if (!picked.includes(c) && ref.every(p => posDist(p, c.pos, keys, sc) >= t)) { picked.push(c); ref.push(c.pos); }
+    }
+    if (picked.length >= n) break;
+  }
+  return picked.sort((a, b) => a.lost - b.lost);
+}
+const subsets = (a, n) => n === 0 ? [[]] : a.flatMap((v, i) => subsets(a.slice(i + 1), n - 1).map(s => [v, ...s]));
+
+/* Résultat : { ok, free, proposals: [{pos, lost}], blockers }
+   ok = au moins une position couvre l'écran. Sinon `blockers` = paramètres de position verrouillés dont le déverrouillage
+   permettrait de couvrir l'écran (vide si même avec toute la position libre c'est impossible). */
+function autoPlan(vps, S0, locks, opts = {}) {
+  const vp = vps[S0.vp], ranges = { ...RANGES, ...opts.ranges }, sc = diffScale(S0);
+  const free = POS.filter(k => !locks[k]), locked = POS.filter(k => locks[k]);
+  const cands = findCovering(vp, S0, free, ranges, EFFORT.main);
+  if (cands.length) return { ok: true, free, blockers: [], proposals: pickDifferent(cands, opts.count || 3, free, sc, opts.avoid) };
+  for (let n = 1; n <= locked.length; n++) {
+    const good = subsets(locked, n).filter(sub => findCovering(vp, S0, free.concat(sub), ranges, EFFORT.light).length);
+    if (good.length) return { ok: false, free, proposals: [], blockers: POS.filter(k => good.some(s => s.includes(k))) };
+  }
+  return { ok: false, free, proposals: [], blockers: [] };
 }
 
 /* point d'impact (s,t) du rayon (a,b) ∈ [-1,1]² du panneau sur le plan écran */
@@ -313,6 +384,6 @@ function rayHit(B, a, b) {
 }
 
 const api = { checkSetup, STD, REAL_MAX, hasMakerLens, lensLimits, throwOffsetOf, autoAim, rayHit, RANGES, ratioOf, makeScreen, computeBeam, toPanel, area, clip, clipRect, quadStats,
-  overlap, compute, score, freeKeys, autoProposals, mid, distToLine, d2 };
+  overlap, covers, compute, autoPlan, mid, distToLine, d2 };
 if (typeof module !== 'undefined') module.exports = api; else root.VPGeo = api;
 })(this);

@@ -13,6 +13,22 @@
 </head>
 
 <body>
+  <div class="gate" id="gate">
+    <form class="gateBox" id="gateForm" autocomplete="off">
+      <h1>APPLI VP</h1>
+      <p class="gateSub">- Régie vidéo -</p>
+      <p class="gateVer" id="gateVer"></p>
+      <input type="password" id="gatePw" placeholder="Mot de passe" autocomplete="current-password"
+        aria-label="Mot de passe">
+      <button type="submit" class="hbtn primary">Ouvrir</button>
+      <p class="gateErr" id="gateErr" hidden>Mot de passe incorrect.</p>
+      <div class="gateMail">
+        <h3>Mot de passe oublié ou caduque ?</h3>
+        <p>Pour recevoir le mot de passe à jour merci d'envoyer une demande :</p>
+        <button type="button" class="hbtn" id="gateAsk">Demander un mot de passe par mail</button>
+      </div>
+    </form>
+  </div>
   <div class="app">
     <nav id="nav">
       <button data-p="calc" class="on"><svg viewBox="0 0 24 24">
@@ -44,16 +60,31 @@
         <h1 id="title">Calcul faisceau</h1>
         <div class="locks" id="locks"></div>
         <span class="vsep"></span>
-        <button class="autoBtn" id="auto" title="Auto : propose un réglage optimal (3 propositions en boucle)"
-          aria-label="Auto">
-          <svg viewBox="-50 -50 100 100">
-            <g id="autoRot">
-              <polygon points="-17.6,-46 17.6,-46 46,-17.6 46,17.6 17.6,46 -17.6,46 -46,17.6 -46,-17.6" />
-              <circle cx="0" cy="-34" r="5" />
-            </g><text x="0" y="8" text-anchor="middle">AUTO</text>
-          </svg>
-        </button>
-        <div class="toast" id="toast"></div>
+        <div class="autoDock" id="autoDock">
+          <div class="autoWrap">
+            <button class="autoBtn" id="auto"
+              title="Auto : place le VP pour couvrir l'écran avec le moins de pixels perdus. Appui maintenu 1 s : nombre de propositions"
+              aria-label="Auto">
+              <svg viewBox="-50 -50 100 100">
+                <g id="autoRot">
+                  <polygon points="-17.6,-46 17.6,-46 46,-17.6 46,17.6 17.6,46 -17.6,46 -46,17.6 -46,-17.6" />
+                  <circle cx="0" cy="-34" r="5" />
+                </g>
+                <rect class="barTrk" x="-19" y="-13" width="38" height="4" rx="2" />
+                <rect class="barFil" id="autoFill" x="-19" y="-13" width="0" height="4" rx="2" />
+                <text x="0" y="8" text-anchor="middle">AUTO</text>
+              </svg>
+            </button>
+            <div class="autoCount" id="autoCount" hidden>
+              <span>mini</span>
+              <div class="acTrack"><i class="acDef"></i><input type="range" id="autoN" min="1" max="5" step="1"
+                  value="2" aria-label="Nombre de propositions"></div>
+              <span>max</span>
+            </div>
+            <div class="autoMsg" id="autoMsg" hidden></div>
+          </div>
+          <div class="toast" id="toast"></div>
+        </div>
         <div class="hsp"></div>
         <button class="txtlink" id="cfgBtn" title="Vue compacte : vues en petit au-dessus, réglages sur 2 colonnes">vue
           compacte</button>
@@ -66,23 +97,78 @@
           <div class="status" id="status"></div>
           <div class="warnBox hidden" id="warnBox"></div>
           <div class="viz" id="viz">
-            <div class="card face"><span class="tag" id="faceTag">Vue de face (écran)</span>
+            <div class="card face"><span class="tag" id="faceTag">Vue de face</span>
               <div class="dragSel" id="dragSel"></div>
-              <div class="refSel" id="refSel" title="Clic : VP → écran → auto"></div><button class="expand"
-                title="Plein écran">⤢</button>
+              <div class="refSel" id="refSel"></div><button class="expand" title="Plein écran">⤢</button>
               <div class="hud"></div><svg id="svgFace"></svg>
+              <div class="dispSel" id="dispSel"><span class="lab">affichage</span>
+                <div class="r2">
+                  <button data-d="zoom" aria-label="Zoom de l’affichage"
+                    title="Zoom : appuyer et glisser vers le haut (agrandir) ou le bas (reculer)"><svg
+                      viewBox="0 0 24 24">
+                      <circle cx="10.5" cy="10.5" r="6.5" />
+                      <path d="M15.3 15.3 21 21M7.5 10.5h6M10.5 7.5v6" />
+                    </svg><span class="arws"><i></i><i></i><i></i><i></i></span></button>
+                  <button data-d="pan" aria-label="Déplacer l’affichage"
+                    title="Déplacement : appuyer et glisser pour voyager latéralement et verticalement"><svg
+                      viewBox="0 0 24 24">
+                      <rect x="8" y="8" width="8" height="8" rx="1.5" />
+                      <path
+                        d="M12 1.5v4M10.3 3.2 12 1.5l1.7 1.7M12 22.5v-4M10.3 20.8 12 22.5l1.7-1.7M1.5 12h4M3.2 10.3 1.5 12l1.7 1.7M22.5 12h-4M20.8 10.3 22.5 12l-1.7 1.7" />
+                    </svg><span class="arws"><i></i><i></i><i></i><i></i></span></button>
+                  <button data-d="auto" aria-label="Affichage automatique"
+                    title="Référence : Fit → VP → écran">Auto</button>
+                </div>
+              </div>
               <div class="legend"><span><i style="background:#3ecf8e"></i>pixels utiles</span><span><i
                     style="background:#ff5d5d"></i>pixels perdus</span></div>
             </div>
-            <div class="card side"><span class="tag">Vue de côté · glisser le VP</span><button class="expand"
+            <div class="card side"><span class="tag">Vue de côté</span><button class="expand"
                 title="Plein écran">⤢</button>
+              <div class="dispSel dispTop" id="dispSelSide">
+                <div class="r2">
+                  <button data-d="zoom" aria-label="Zoom de l’affichage"
+                    title="Zoom : appuyer et glisser vers le haut (agrandir) ou le bas (reculer)"><svg
+                      viewBox="0 0 24 24">
+                      <circle cx="10.5" cy="10.5" r="6.5" />
+                      <path d="M15.3 15.3 21 21M7.5 10.5h6M10.5 7.5v6" />
+                    </svg><span class="arws"><i></i><i></i><i></i><i></i></span></button>
+                  <button data-d="pan" aria-label="Déplacer l’affichage"
+                    title="Déplacement : appuyer et glisser pour voyager latéralement et verticalement"><svg
+                      viewBox="0 0 24 24">
+                      <rect x="8" y="8" width="8" height="8" rx="1.5" />
+                      <path
+                        d="M12 1.5v4M10.3 3.2 12 1.5l1.7 1.7M12 22.5v-4M10.3 20.8 12 22.5l1.7-1.7M1.5 12h4M3.2 10.3 1.5 12l1.7 1.7M22.5 12h-4M20.8 10.3 22.5 12l-1.7 1.7" />
+                    </svg><span class="arws"><i></i><i></i><i></i><i></i></span></button>
+                  <button data-d="auto" aria-label="Cadrage automatique" title="Fit : cadre toute la vue">Fit</button>
+                </div>
+              </div>
               <div class="hud"></div><svg id="svgSide"></svg>
             </div>
-            <div class="card top"><span class="tag">Vue de dessus · glisser le VP</span><button class="expand"
+            <div class="card top"><span class="tag">Vue de dessus</span><button class="expand"
                 title="Plein écran">⤢</button>
+              <div class="dispSel dispTop" id="dispSelTop">
+                <div class="r2">
+                  <button data-d="zoom" aria-label="Zoom de l’affichage"
+                    title="Zoom : appuyer et glisser vers le haut (agrandir) ou le bas (reculer)"><svg
+                      viewBox="0 0 24 24">
+                      <circle cx="10.5" cy="10.5" r="6.5" />
+                      <path d="M15.3 15.3 21 21M7.5 10.5h6M10.5 7.5v6" />
+                    </svg><span class="arws"><i></i><i></i><i></i><i></i></span></button>
+                  <button data-d="pan" aria-label="Déplacer l’affichage"
+                    title="Déplacement : appuyer et glisser pour voyager latéralement et verticalement"><svg
+                      viewBox="0 0 24 24">
+                      <rect x="8" y="8" width="8" height="8" rx="1.5" />
+                      <path
+                        d="M12 1.5v4M10.3 3.2 12 1.5l1.7 1.7M12 22.5v-4M10.3 20.8 12 22.5l1.7-1.7M1.5 12h4M3.2 10.3 1.5 12l1.7 1.7M22.5 12h-4M20.8 10.3 22.5 12l-1.7 1.7" />
+                    </svg><span class="arws"><i></i><i></i><i></i><i></i></span></button>
+                  <button data-d="auto" aria-label="Cadrage automatique" title="Fit : cadre toute la vue">Fit</button>
+                </div>
+              </div>
               <div class="hud"></div><svg id="svgTop"></svg>
             </div>
           </div>
+          <div class="simVals" id="simVals" hidden></div>
           <div class="results" id="kpis"></div>
         </div>
       </section>
@@ -99,19 +185,23 @@
       <section class="page hidden" id="p-set">
         <h2>Réglages</h2>
         <p>Unités, thème, import/export JSON.</p>
+        <div class="simCfgBox" id="simCfgBox"></div>
+        <div class="simCfgBox" id="accessBox"></div>
       </section>
 
       <aside id="details">
         <div class="dhead">
-          <h3>Calculs détaillés</h3><button class="hbtn" id="detFull" title="Plein écran">⤢</button><button class="hbtn"
-            id="detClose">Fermer</button>
+          <h3>Calculs détaillés</h3><span class="simHead" id="simHead"></span><span class="dsp"></span><button
+            class="hbtn" id="detFull" title="Plein écran">⤢</button><button class="hbtn" id="detClose">Fermer</button>
         </div>
         <div class="tabs" id="dtabs"></div>
         <div class="dbody" id="dbody"></div>
       </aside>
     </main>
   </div>
+  <script src="access.js"></script>
   <script src="geometry.js"></script>
+  <script src="shapes.js"></script>
   <script src="data.js"></script>
   <script src="parc.js"></script>
   <script src="app.js"></script>
