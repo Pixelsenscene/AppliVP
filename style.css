@@ -823,3 +823,8 @@ nav button:not(.on) .vpTop{stroke:currentColor}      /* icône VP non sélection
 nav button:not(.on) .vpBase{fill:currentColor;stroke:currentColor}
 nav button.on{box-shadow:inset 0 0 0 1.5px var(--acc)}      /* menu sélectionné : contour bleu */
 .simVals .simItem,.simFull .simItem{cursor:pointer;pointer-events:auto}      /* texte vert cliquable : un appui désactive les valeurs (le texte de la vue agrandie laisse sinon passer les appuis vers le dessin) */
+
+/* version verticale « gravée » dans le menu latéral, centrée entre Projets et Réglages (haut des lettres à gauche) */
+nav .sp{display:flex;align-items:center;justify-content:center;overflow:hidden}
+nav .navVer{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;font-size:11px;letter-spacing:.14em;font-weight:600;color:rgba(255,255,255,.16);text-shadow:0 -1px 0 rgba(255,255,255,.07),0 1px 0 rgba(0,0,0,.55);user-select:none;pointer-events:none}
+@media (max-width:900px), (orientation:portrait){ nav .sp{display:none} }

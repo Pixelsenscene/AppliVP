@@ -17,7 +17,7 @@
     hash: '57f694c3f184f37c93a65a749232ae9ff7381b72a03c985e3266e1d0137084fd',      // mot de passe par défaut : VPVPVP
     mail: 'pixelsenscene94@gmail.com',
   };
-  const VERSION = '1.1.7';      // version de l'application : à tenir à jour ici (elle figure dans la demande de mot de passe)
+  const VERSION = window.VP_APP_VERSION || '?';      // version de l'application : source unique = version.js (écrit par tools/set-version.js)
   const SALT = 'vp-access|', K_OK = 'vp.access.ok', K_ASK = 'vp.access.ask', K_SES = 'vp.access.session';
 
   /* SHA-256 (sans dépendance : crypto.subtle n'existe pas hors connexion sécurisée) */
@@ -112,6 +112,7 @@
   const unlock = () => { set(localStorage, K_OK, CFG.hash); set(sessionStorage, K_SES, CFG.hash); hide(); };
   const lock = () => { set(localStorage, K_OK, null); set(sessionStorage, K_SES, null); show(); };
 
+  const nv = document.getElementById('navVer'); if (nv) nv.textContent = 'Appli VP — version ' + VERSION;
   if (gate) {
     const gv = document.getElementById('gateVer'); if (gv) gv.textContent = 'version ' + VERSION;
     const form = document.getElementById('gateForm'), err = document.getElementById('gateErr'), pw = document.getElementById('gatePw');
