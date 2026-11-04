@@ -112,7 +112,7 @@
   const unlock = () => { set(localStorage, K_OK, CFG.hash); set(sessionStorage, K_SES, CFG.hash); hide(); };
   const lock = () => { set(localStorage, K_OK, null); set(sessionStorage, K_SES, null); show(); };
 
-  const nv = document.getElementById('navVer'); if (nv) nv.textContent = 'Appli VP — version ' + VERSION;
+  const nv = document.getElementById('navVer'); if (nv) nv.innerHTML = '<b class="navName">Appli VP</b> — version ' + VERSION;
   if (gate) {
     const gv = document.getElementById('gateVer'); if (gv) gv.textContent = 'version ' + VERSION;
     const form = document.getElementById('gateForm'), err = document.getElementById('gateErr'), pw = document.getElementById('gatePw');
