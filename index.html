@@ -95,9 +95,12 @@
         <div class="hsp"></div>
         <button class="txtlink" id="cfgBtn" title="Vue compacte : vues en petit au-dessus, réglages sur 2 colonnes">vue
           compacte</button>
-        <button type="button" class="simTog" id="simTopTog" aria-label="Valeurs dans les simulations"
-          aria-pressed="false" hidden></button>
-        <button class="hbtn" id="detBtn">∑ Calculs</button>
+        <div class="calcWrap" id="calcWrap">
+          <!-- le switch vert enveloppe le bouton Calculs (déborde de 1,5 rangée en haut / en bas, 4 colonnes de chaque côté) -->
+          <button type="button" class="simTog simWrap" id="simTopTog" aria-label="Valeurs dans les simulations"
+            aria-pressed="false" hidden></button>
+          <button class="hbtn" id="detBtn">∑ Calculs</button>
+        </div>
       </header>
 
       <section class="calc" id="p-calc">

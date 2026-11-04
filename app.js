@@ -913,11 +913,32 @@
   }
 
   /* ---------- Rendu principal ---------- */
+  /* MESURE DES TEMPS (temporaire) : chaque rendu écrit dans la console (F12) la durée de ses étapes en ms. À retirer après diagnostic (chercher « PERF »). */
+  const PERF = { on: false, t: [], last: 0, m(l) { if (this.on) this.t.push([l, performance.now()]); }, end() {
+    if (!this.on || !this.t.length) return; const t0 = this.t[0][1], tot = performance.now() - t0, gap = t0 - this.last; this.last = performance.now();
+    const rows = this.t.slice(1).map((x, i) => `${x[0]} ${(x[1] - this.t[i][1]).toFixed(1)}`).join(' | ');
+    if (tot > 8) console.log(`%cPERF render ${tot.toFixed(1)} ms (+${gap.toFixed(0)} ms depuis le précédent)  →  ${rows}`, tot > 40 ? 'color:#ff5d5d' : 'color:#e0b040'); this.t = [];
+    const e = performance.now(); requestAnimationFrame(() => { const d = performance.now() - e; if (d > 25) console.log(`%cPERF image suivante affichée ${d.toFixed(0)} ms après la fin du rendu (mise en page + peinture + animations)`, 'color:#8ab4ff'); }); } };
+  /* Valeurs vertes : buildDetails() reconstruit les 4 onglets de détails (surbrillances, aides, géométrie) : trop lourd pour tourner à chaque image pendant un glissement (c'est ce qui ralentissait quand le switch est ON).
+     On le limite à une fois toutes les SIM_GAP ms (première mise à jour immédiate, puis la dernière valeur au plus tard SIM_GAP ms après) ; le dessin des vues, lui, reste à chaque image. */
+  const SIM_GAP = 120; let simLastRun = 0, simTimer = 0, simR = null;
+  function simRun() {
+    simTimer = 0; simLastRun = performance.now(); const r = simR; simR = null;
+    if (!r || !sim.checks.length || $('details').classList.contains('open')) return;
+    const t0 = performance.now(); if (simCfg.on) renderSim(buildDetails(r)); else renderSimOff();
+    if (PERF.on) console.log(`%cPERF valeurs vertes (buildDetails + renderSim) ${(performance.now() - t0).toFixed(1)} ms`, 'color:#8ae08a');
+  }
+  function simSchedule(r) {
+    simR = r; const wait = SIM_GAP - (performance.now() - simLastRun);
+    if (wait <= 0) { clearTimeout(simTimer); simRun(); } else if (!simTimer) simTimer = setTimeout(simRun, wait);
+  }
+  window.PERF = PERF;      // pour l'activer à la demande : taper  PERF.on = true  dans la console (et  PERF.on = false  pour l'arrêter)
   function render() {
-    trackChanges(); syncAdv();
-    const r = G.compute(vpOf(), S), v = vpOf();
+    PERF.t = []; PERF.m('début');
+    trackChanges(); syncAdv(); PERF.m('trackChanges+syncAdv');
+    const r = G.compute(vpOf(), S), v = vpOf(); PERF.m('G.compute');
     if (S.rot && r.valid) S.aim = [r.B.T[0], r.B.T[2]];          // mémorise le point visé (référence pour les déplacements en vue de côté / dessus)
-    warns = G.checkSetup(v, S, { lens: adv.lens, src: adv.src, rot: adv.rot, off: adv.off }, r);
+    warns = G.checkSetup(v, S, { lens: adv.lens, src: adv.src, rot: adv.rot, off: adv.off }, r); PERF.m('checkSetup');
     for (const k of Object.keys(PARAMS)) {
       const i = $(k); if (+i.value !== S[k]) i.value = S[k];
       const o = $('o_' + k); o.readOnly = locks[k];
@@ -935,11 +956,12 @@
     document.querySelector('.row[data-k=zoom]').style.display = v.zoomable ? '' : 'none';
     $('chain').classList.toggle('on', effChain());
     $('chain').style.opacity = locks.sw || locks.sh ? .4 : 1;
-    syncLocks(); syncTouched(); drawAdv(); drawDragSel(r); drawDispSel(); drawDispViews(); syncAutoMsg();
-    drawStatus(r);
+    PERF.m('champs'); syncLocks(); syncTouched(); drawAdv(); drawDragSel(r); drawDispSel(); drawDispViews(); syncAutoMsg(); PERF.m('réglages+icônes');
+    drawStatus(r); PERF.m('drawStatus');
     lastR = r;
-    drawHud(); drawFace(r); drawSide(r); drawTop(r); drawKpis(r);
-    if ($('details').classList.contains('open')) renderDetails(r); else if (sim.checks.length) { if (simCfg.on) renderSim(buildDetails(r)); else renderSimOff(); }      // valeurs désactivées (bouton vert) et panneau fermé : aucun calcul de détail, l'application ne fait que le dessin
+    drawHud(); PERF.m('drawHud'); drawFace(r); PERF.m('drawFace'); drawSide(r); PERF.m('drawSide'); drawTop(r); PERF.m('drawTop'); drawKpis(r); PERF.m('drawKpis');
+    if ($('details').classList.contains('open')) { renderDetails(r); PERF.m('renderDetails'); } else if (sim.checks.length) { simSchedule(r); PERF.m('valeurs vertes (planifiées / exécutées)'); }      // valeurs désactivées (bouton vert) et panneau fermé : aucun calcul de détail, l'application ne fait que le dessin
+    PERF.m('fin'); PERF.end();
   }
 
   /* ---------- Auto : propositions ----------
@@ -1058,16 +1080,74 @@
     sim.checks = sim.checks.filter(k => simIdx.has(k));                  // sans copie connue (ancienne mémoire), une ligne disparue ne peut être gardée
     Object.keys(sim.snap).forEach(k => { if (!sim.checks.includes(k)) delete sim.snap[k]; });
     simSave();
+    const sig = sim.checks.map(k => (simIdx.get(k) || {}).val).join('|'); if (simSig !== null && sig !== simSig && simCfg.on) simPulse(); simSig = sig;      // valeurs qui bougent → le switch s'anime
     const tog = simTogHtml();      // bouton vert à gauche des valeurs : active / désactive la fonction (comme le bouton rond du haut de ∑ Calculs)
     paintSim(tog, simCfg.on ? sim.checks.slice(0, sim.FIRST).map(simItem).join('') : '', (simCfg.on ? `<div class="simRow">${sim.checks.map(simItem).join('')}</div>` : ''));
   }
-  const simTogHtml = () => sim.checks.length ? `<button type="button" class="simTog${simCfg.on ? ' on' : ''}" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations'}"></button>` : '';
+  /* Tous les switchs verts : rond de 36 px. Dedans : 5 × 5 petits carrés en dégradé vert, rognés par le rond. Celui du haut est collé à gauche de ∑ Calculs (les deux contours forment un huit horizontal, orbite dans simOrbit) ;
+     les autres (vues agrandies, plein écran, Calculs détaillés) portent leur propre orbite : un point brillant + traîne qui tourne autour du rond (rotation CSS d'un conteneur, exécutée par le GPU).
+     OFF (CSS) : plus sombre, et les carrés se réduisent à un cercle intérieur (nets jusqu'à 1/2 du diamètre, estompés jusqu'à 7/10). */
+  function simRound(orb = true, nm = false) {      // carrés en HTML (pas en SVG) : clignotement et glissement ne sont que des opacity / transform, exécutés par le GPU même quand le fil principal est occupé
+    const N = 5, S = 5, G = 1.25, P = S + G, rnd = (a, b) => (a + Math.random() * (b - a)).toFixed(2);
+    const lerp = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+    let g = '';
+    for (let i = 0; i < N; i++) {
+      g += `<span class="r" style="top:${(i * P).toFixed(2)}px;--d:${rnd(-2, 0)}s;--t:${rnd(.9, 1.5)}s">`;
+      for (let k = 0; k < N; k++) g += `<i${Math.random() < .45 ? ' class="b"' : ''} style="left:${(k * P).toFixed(2)}px;background:rgb(${lerp([200, 242, 60], [7, 140, 28], (k + .5) / N)});--d:${rnd(-1.5, 0)}s;--t:${rnd(.35, .9)}s"></i>`;
+      g += '</span>';
+    }
+    let o = '';
+    if (orb) {      // orbite autour du rond : tête + traîne (conteneur qui tourne d'un tour par seconde quand .live)
+      for (let i = 0; i <= 6; i++) { const z = i ? 5 - i * .5 : 5.5; o += `<i style="width:${z}px;height:${z}px;margin:${-z / 2}px 0 0 ${-z / 2}px;opacity:${(1 - i * .15).toFixed(2)};transform:rotate(${-i * 13}deg) translateY(-17px)${i ? '' : ';box-shadow:0 0 4px 1px #b8ff6a'}"></i>`; }
+      o = `<span class="orb" aria-hidden="true">${o}</span>`;
+    }
+    return `<span class="g" aria-hidden="true">${g}</span>${o}${nm ? '<span class="cfgNm" aria-hidden="true"></span>' : ''}`;      // nm : nom de la config active, sous le rond
+  }
+  /* Circulation lumineuse sur le contour du huit (rond + bouton Calculs) : un seul tracé fermé (rond dans un sens, bouton dans l'autre, croisement au point de contact), 1 s par tour.
+     Petits points HTML déplacés par des animations de transform (Web Animations) : exécutées par le GPU, elles ne sont pas freinées par les recalculs de l'application.
+     Un point brillant + sa traîne + des points ambiants répartis sur tout le contour. Animées seulement quand le switch est ON et que les valeurs bougent (.live). */
+  let simOrbitAnims = [];
+  function simOrbitPlay(on) { simOrbitAnims.forEach(an => on ? an.play() : an.pause()); }
+  function simOrbit() {
+    const cw = $('calcWrap'), btn = $('detBtn'); if (!cw || !btn || !cw.animate) return;
+    const Bw = btn.offsetWidth || 100; let o = cw.querySelector('.simOrbit'); if (o && o.dataset.w === String(Bw)) return;
+    simOrbitAnims.forEach(an => an.cancel()); simOrbitAnims = []; if (o) o.remove();
+    const W = 34 + Bw, c = W - 18;      // rond 36 px + bouton Bw − 2 px de contours superposés ; tracé au milieu des contours de 2 px (rayon 17)
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', `M35 18A17 17 0 0 0 1 18A17 17 0 0 0 35 18A17 17 0 0 1 52 1H${c}A17 17 0 0 1 ${c} 35H52A17 17 0 0 1 35 18Z`);
+    const L = path.getTotalLength(), M = 90, pts = [];
+    for (let i = 0; i <= M; i++) pts.push(path.getPointAtLength(L * i / M));
+    const dots = [];      // [taille px, opacité, retard (ms derrière la tête), couleur, ombre]
+    dots.push([6, 1, 0, '#fff', '0 0 5px 1px #b8ff6a']);
+    for (let i = 1; i <= 7; i++) dots.push([6 - i * .55, 1 - i * .12, i * 22, '#d8ffa0', 'none']);
+    for (let j = 0; j < 12; j++) dots.push([2, .5, 1000 * j / 12 + 40, '#c9f58a', 'none']);
+    let html = ''; dots.forEach(d => { html += `<i style="width:${d[0]}px;height:${d[0]}px;margin:${-d[0] / 2}px 0 0 ${-d[0] / 2}px;opacity:${d[1]};background:${d[3]};box-shadow:${d[4]}"></i>`; });
+    cw.insertAdjacentHTML('beforeend', `<span class="simOrbit" data-w="${Bw}" style="width:${W}px" aria-hidden="true">${html}</span>`);
+    o = cw.querySelector('.simOrbit');
+    [...o.children].forEach((el, i) => {
+      const an = el.animate(pts.map(q => ({ transform: `translate(${q.x.toFixed(1)}px,${q.y.toFixed(1)}px)` })), { duration: 1000, iterations: Infinity, easing: 'linear', delay: -(1000 - dots[i][2] % 1000) % 1000 });
+      an.pause(); simOrbitAnims.push(an);
+    });
+    simOrbitPlay(!!$('simTopTog') && $('simTopTog').classList.contains('live') && $('simTopTog').classList.contains('on'));
+  }
+  window.addEventListener('resize', simOrbit); if (document.fonts && document.fonts.ready) document.fonts.ready.then(simOrbit);
+  let simSig = null, simLiveT = 0;
+  const simLive = on => { document.querySelectorAll('.simTog').forEach(b => b.classList.toggle('live', on)); simOrbitPlay(on); };
+  let simRel = 0;      // instant du dernier relâchement : la mise à jour différée des valeurs ne doit pas relancer l'animation juste après
+  function simPulse() {
+    if (performance.now() - simRel < 400) return;      // valeurs vertes qui changent : le switch s'anime ; il s'arrête dès le relâchement du doigt / de la souris / de la touche (pas d'attente), avec un filet de 400 ms si l'on reste appuyé sans rien changer (plus court, il coupait l'animation entre deux rendus lents)
+    simLive(true); clearTimeout(simLiveT); simLiveT = setTimeout(() => simLive(false), 400);
+  }
+  ['pointerup', 'pointercancel', 'touchend', 'mouseup', 'keyup'].forEach(ev => document.addEventListener(ev, () => { simRel = performance.now(); clearTimeout(simLiveT); simLive(false); }, true));
+  ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { simRel = 0; }, true));
+  const simTogHtml = () => sim.checks.length ? `<button type="button" class="simTog${simCfg.on ? ' on' : ''}" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations'}">${simRound()}</button>` : '';
   const renderSimOff = () => { const t = simTogHtml(); paintSim(t, '', ''); };      // valeurs désactivées : seul le bouton vert reste, sans aucun calcul
   function paintSim(tog, first, all) {      // tog : bouton vert (dans la bande du haut ; repris dans les vues agrandies) ; first : valeurs de la vue principale ; all : valeurs de la vue compacte
-    const top = $('simTopTog'); if (top) { top.hidden = !tog; top.classList.toggle('on', simCfg.on); top.setAttribute('aria-pressed', String(simCfg.on)); top.title = simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations'; }
+    { const nm = (cfgOf(simCfg.current) || {}).name || ''; document.querySelectorAll('.cfgNm').forEach(e => { if (e.textContent !== nm) e.textContent = nm; }); }      // nom de la config active sous les switchs (hors Calculs détaillés)
+    const top = $('simTopTog'); if (top) { top.hidden = !tog; if (tog && !top.firstChild) top.innerHTML = simRound(false, true); if (tog) simOrbit(); top.classList.toggle('on', simCfg.on); top.setAttribute('aria-pressed', String(simCfg.on)); top.title = simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations'; }
     document.querySelectorAll('.viz .card').forEach(c => { if (!c.querySelector('.simFull')) { const d = document.createElement('div'); d.className = 'simFull'; c.append(d); } });
     document.querySelectorAll('.viz .card').forEach(c => {                                                   // vue agrandie : bouton vert placé au-dessus du bouton Auto (bas gauche) ; il n'est montré que dans la vue agrandie (CSS)
-      let b = c.querySelector('.simFullTog'); if (!b) { b = document.createElement('button'); b.type = 'button'; b.className = 'simTog simFullTog'; b.setAttribute('aria-label', 'Valeurs dans les simulations'); c.append(b); }
+      let b = c.querySelector('.simFullTog'); if (!b) { b = document.createElement('button'); b.type = 'button'; b.className = 'simTog simFullTog'; b.setAttribute('aria-label', 'Valeurs dans les simulations'); b.innerHTML = simRound(true, true); c.append(b); }
       b.hidden = !tog; b.classList.toggle('on', simCfg.on); b.setAttribute('aria-pressed', String(simCfg.on)); b.title = simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations';
     });
     document.querySelectorAll('.simFull').forEach(el => { el.innerHTML = first; });                           // vue agrandie : les 3 premières, en bas du grand graphique
@@ -1081,7 +1161,7 @@
   const fromCurrent = () => sim.checks.map(sk => ({ sk, label: simLabel(sk), name: sim.names[sk] || '', snap: sim.snap[sk] }));
   function simChanged() { simSave(); renderSimHead(); renderSimSettings(); render(); }
   function applyCfg(id) {
-    const c = cfgOf(id); simCfg.current = id; sim.checks = []; sim.names = {}; sim.editing = null;
+    const c = cfgOf(id); simCfg.current = id; sim.checks = []; sim.names = {}; sim.editing = null; simNav = -1;
     if (c) c.items.forEach(i => { sim.checks.push(i.sk); if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = i.snap; });
     simChanged();
   }
@@ -1095,45 +1175,179 @@
     let T = buildDetails(r)[t]; if (!T) return;
     let i = T.rows.findIndex(x => x.sk === k);
     if (i < 0 && t === 'vpe') { vpe.flt = ['', '']; T = buildDetails(r)[t]; i = T.rows.findIndex(x => x.sk === k); }      // ligne cachée par un filtre : on le lève
-    tab = t; selRow = i >= 0 ? i : 1; renderDetails(r); scrollToRow(selRow);
+    tab = t; selRow = i >= 0 ? i : 1; renderDetails(r); scrollToRow(selRow); renderSimHead();
   }
+  /* Barre du haut de Calculs détaillés : [flèches haut/bas + « n valeurs »] [switch] [menu des configs existantes] [icônes : ajouter · supprimer · modifier · valider (actif seulement si la sélection a changé)] */
+  let simBackState = null;      // fenêtre de modification laissée en plein travail (bouton « Revenir aux modifications »)
+  let hdrArm = '', hdrArmT = 0;      // icône en cours de confirmation ('del')
+  const cfgDirty = c => { if (!c) return false; const A = c.items.map(i => i.sk + '\u0001' + (i.name || '')).join('\u0002'), B = sim.checks.map(k => k + '\u0001' + (sim.names[k] || '')).join('\u0002'); return A !== B; };      // la sélection actuelle (lignes cochées + noms) diffère de la config enregistrée
+  const hdrFlash = (what, ms) => { hdrArm = what; clearTimeout(hdrArmT); hdrArmT = setTimeout(() => { hdrArm = ''; renderSimHead(); }, ms); renderSimHead(); };
   function renderSimHead() {
     $('detBtn').classList.toggle('simOff', !simCfg.on);      // contour du bouton ∑ Calculs assombri quand l'interrupteur est sur OFF
     const el = $('simHead'); if (!el) return;
-    const opts = `<option value="">Choisir une configuration</option>${simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${c.id === simCfg.current ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}<option value="__add">＋ ajouter une config</option><option value="__manage">✎ modifier / supprimer une config</option>`;
-    el.innerHTML = `<button class="simSw${simCfg.on ? ' on' : ''}" id="simSw" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Désactiver les valeurs dans les simulations' : 'Activer les valeurs dans les simulations'}"></button><select id="simSel" aria-label="Configuration"${simCfg.on ? '' : ' disabled'}>${opts}</select><span class="simNav"><button type="button" data-n="-1" aria-label="Ligne précédente de la configuration" title="Ligne précédente de la configuration"${simCfg.on ? '' : ' disabled'}><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button><button type="button" data-n="1" aria-label="Ligne suivante de la configuration" title="Ligne suivante de la configuration"${simCfg.on ? '' : ' disabled'}><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></span>`;
+    const cur = cfgOf(simCfg.current), n = sim.checks.length, dis = simCfg.on ? '' : ' disabled';
+    const opts = (cur ? '' : '<option value="" disabled hidden selected>Choisir une configuration</option>') + simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${c.id === simCfg.current ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+    const act = (a, ico, title, off, cls = '') => `<button type="button" class="${cls}" data-act="${a}" title="${title}" aria-label="${title}"${off ? ' disabled' : ''}>${ic(ico)}</button>`;
+    const canDel = cur && !FIXED.includes(cur.id), dirty = cfgDirty(cur), pos = simNav >= 0 && simNav < n ? `${simNav + 1}/${n}` : String(n);      // « 3/5 » : ligne active / total ; « 5 » : aucune ligne active
+    el.innerHTML = `<span class="simNavBox"><span class="simCnt"${simCfg.on ? '' : ' style="visibility:hidden"'}>valeurs</span><span class="simNav"><button type="button" data-n="-1" aria-label="Ligne précédente de la configuration" title="Ligne précédente de la configuration"${dis}><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button><span class="simPos"${simCfg.on ? '' : ' style="visibility:hidden"'}>${pos}</span><button type="button" data-n="1" aria-label="Ligne suivante de la configuration" title="Ligne suivante de la configuration"${dis}><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></span></span>`
+      + `<button class="simSw${simCfg.on ? ' on' : ''}" id="simSw" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Désactiver les valeurs dans les simulations' : 'Activer les valeurs dans les simulations'}">${simRound(false)}</button>`
+      + `<select id="simSel" aria-label="Configuration"${dis}>${opts}</select>`
+      + `<span class="simAct">${act('add', 'add', 'Ajouter une configuration', false)}${act('del', hdrArm === 'del' ? 'ok' : 'del', hdrArm === 'del' ? 'Confirmer la suppression (cliquer de nouveau)' : canDel ? 'Supprimer la configuration' : 'Supprimer la configuration (impossible pour A, B et C)', !canDel, hdrArm === 'del' ? 'danger' : '')}${act('edit', 'edit', 'Modifier la configuration', !cur)}${act('sync', 'ok', 'Mettre à jour la config', !dirty)}</span>`
+      + (simBackState ? `<button type="button" class="simBackBtn" title="Revenir aux modifications" aria-label="Revenir aux modifications"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>` : '');
     el.querySelectorAll('.simNav button').forEach(b => { b.onclick = () => simStep(+b.dataset.n); });
+    const bk = el.querySelector('.simBackBtn'); if (bk) bk.onclick = simBackRestore;
     $('simSw').onclick = () => { simCfg.on = !simCfg.on; simChanged(); };
-    const sel = $('simSel'); if (sel) sel.onchange = () => {
-      const v = sel.value;
-      if (v === '__add') { sel.value = simCfg.current; openSimModal('edit', null); } else if (v === '__manage') { sel.value = simCfg.current; openSimModal('manage'); } else if (v) applyCfg(v); else { simCfg.current = ''; simSave(); }
-    };
+    el.querySelectorAll('.simAct button').forEach(b => {
+      b.onclick = () => {
+        const a = b.dataset.act, c = cfgOf(simCfg.current);
+        if (a === 'add') openSimModal('edit', null);
+        else if (a === 'edit' && c) openSimModal('edit', c.id);
+        else if (a === 'sync' && c && cfgDirty(c)) { c.items = fromCurrent(); simSave(); renderSimHead(); }
+        else if (a === 'del' && c && !FIXED.includes(c.id)) {
+          if (hdrArm === 'del') { clearTimeout(hdrArmT); hdrArm = ''; simCfg.cfgs = simCfg.cfgs.filter(x => x.id !== c.id); simCfg.current = ''; simChanged(); } else hdrFlash('del', 3000);
+        }
+      };
+    });
+    const sel = $('simSel'); if (sel) sel.onchange = () => { if (sel.value) applyCfg(sel.value); };
   }
   /* ---- petite fenêtre (avant-plan, fond flouté) ---- */
   let modal = null, delConfirm = null;
   function closeSimModal() { const m = $('simModal'); if (m) m.remove(); modal = null; delConfirm = null; }
-  function openSimModal(view, id) {
-    closeSimModal();
+  function openSimModal(view, id, restore) {
+    closeSimModal(); simBackHide();
     const ov = document.createElement('div'); ov.id = 'simModal'; ov.innerHTML = '<div class="smWin"></div>'; document.body.append(ov);
     ov.addEventListener('pointerdown', e => { if (e.target === ov) closeSimModal(); });
     ov.addEventListener('click', simModalClick); ov.addEventListener('input', simModalInput);
+    ov.addEventListener('focusin', e => {      // un appui dans la case « nom » d'une ligne la sélectionne aussi : le visuel apparaît sur le côté (sans redessiner la liste, pour ne pas perdre le curseur)
+      const t = e.target; if (!modal || modal.view !== 'edit' || !t.dataset || t.dataset.f !== 'item') return;
+      const i = +t.dataset.i; if (modal.sel === i) return;
+      modal.sel = i; ov.querySelectorAll('.smList .smRow').forEach((r, k) => r.classList.toggle('sel', k === i));
+      smSyncView(); smKeepHalf();
+    });
     ov.addEventListener('keydown', e => { if (e.key === 'Escape') closeSimModal(); else if (e.key === 'Enter' && e.target.closest('.smWin input') && modal && modal.view === 'edit') simModalClick({ target: ov.querySelector('[data-a=save]') }); });
-    modal = { view, id: id || null };
-    if (view === 'edit') { const c = id ? cfgOf(id) : null; modal.name = c ? c.name : ''; modal.items = c ? c.items.map(i => ({ ...i })) : fromCurrent(); }
+    if (restore) modal = restore; else modal = { view, id: id || null };
+    modal.hist = modal.hist || []; modal.fut = modal.fut || [];
+    if (!restore && view === 'edit') { const c = id ? cfgOf(id) : null; modal.name = c ? c.name : ''; modal.items = c ? c.items.map(i => ({ ...i })) : []; modal.dup = ''; }      // nouvelle config : liste vide (on repart de zéro) ; la liste déroulante permet de dupliquer une config existante
+    if (!modal.base && modal.view === 'edit') modal.base = smBaseOf();      // état à l'ouverture : sert à savoir s'il y a quelque chose à valider
     drawSimModal();
   }
   function drawSimModal() {
     const w = document.querySelector('#simModal .smWin'); if (!w || !modal) return;
+    const oldList = w.querySelector('.smList'), keepTop = oldList ? oldList.scrollTop : 0;      // le redessin ne ramène pas la liste en haut
     const btn = (a, ico, title, extra = '', cls = '') => `<button class="smIc ${cls}" data-a="${a}" ${extra} title="${title}" aria-label="${title}">${ic(ico)}</button>`;
     if (modal.view === 'manage') {
       w.innerHTML = `<h4>Configurations</h4><div class="smList">${simCfg.cfgs.map(c => `<div class="smRow"><span class="smNm">${esc(c.name)}<small>${c.items.length} valeur${c.items.length > 1 ? 's' : ''}</small></span>${btn('edit', 'edit', 'Modifier', `data-id="${esc(c.id)}"`)}${FIXED.includes(c.id) ? '' : btn('del', delConfirm === c.id ? 'ok' : 'del', delConfirm === c.id ? 'Confirmer la suppression' : 'Supprimer', `data-id="${esc(c.id)}"`, delConfirm === c.id ? 'danger' : '')}</div>`).join('') || '<p class="smEmpty">Aucune configuration.</p>'}</div><div class="smFoot">${btn('new', 'add', 'Ajouter une config')}${btn('close', 'x', 'Fermer')}</div>`;
     } else {
-      w.innerHTML = `<h4>${modal.id ? 'Modifier la configuration' : 'Nouvelle configuration'}</h4><input class="smName" data-f="name" placeholder="nom de la configuration" maxlength="30" value="${esc(modal.name)}"><div class="smList">${modal.items.map((it, i) => `<div class="smRow"><span class="smLbl">${esc(it.label)}</span><input data-f="item" data-i="${i}" placeholder="nom (facultatif)" maxlength="40" value="${esc(it.name)}">${btn('rm', 'x', 'Retirer cette valeur', `data-i="${i}"`)}</div>`).join('') || '<p class="smEmpty">Aucune valeur : cochez des lignes dans ∑ Calculs puis reprenez la sélection actuelle.</p>'}</div><div class="smFoot">${btn('sync', 'sync', 'Prendre la sélection actuelle')}${btn('save', 'ok', 'Valider', '', 'ok')}${btn('close', 'x', 'Annuler')}</div>`;
+      w.innerHTML = `<div class="smTop"><div class="smTitle"><h4>${modal.id ? 'Modifier la configuration' : 'Nouvelle configuration'}</h4><div class="smAct">${btn('save', 'ok', 'Valider', '', 'ok')}${btn('close', 'x', 'Annuler')}</div></div><input class="smName" data-f="name" placeholder="nom de la configuration" maxlength="30" value="${esc(modal.name)}">${modal.id ? '' : `<select class="smDup" data-f="dup" aria-label="Dupliquer une configuration existante"><option value="">Nouvelle configuration vide</option>${simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${modal.dup === c.id ? ' selected' : ''}>Dupliquer : ${esc(c.name)} (${c.items.length})</option>`).join('')}</select>`}</div><div class="smList">${modal.items.map((it, i) => `<div class="smRow${modal.sel === i ? ' sel' : ''}${modal.id && modal.id === simCfg.current && !sim.checks.includes(it.sk) ? ' miss' : ''}"${modal.id && modal.id === simCfg.current && !sim.checks.includes(it.sk) ? ' title="Cette valeur n’est pas active dans Calculs détaillés (décochée, ou introuvable dans le calcul actuel) : elle n’est pas comptée là-bas"' : ''}><span class="smLbl" role="button" tabindex="0" data-a="pick" data-i="${i}" title="Voir où se trouve cette valeur">${esc(it.label)}</span><input data-f="item" data-i="${i}" placeholder="nom (facultatif)" maxlength="40" value="${esc(it.name)}">${btn('rm', 'x', 'Retirer cette valeur', `data-i="${i}"`)}</div>`).join('') || '<p class="smEmpty">Aucune valeur : cochez des lignes dans ∑ Calculs, puis utilisez la coche « Mettre à jour la config ».</p>'}<div class="smAddRow" role="button" tabindex="0" data-a="addrow" title="Ajouter une valeur : ouvre Calculs détaillés (un bouton permettra de revenir ici)" aria-label="Ajouter une valeur">${ic('add')}</div></div>`;
     }
+    const newList = w.querySelector('.smList'); if (newList) { newList.scrollTop = keepTop; if (modal.view === 'edit' && modal.sel != null && modal.keepHalf) smKeepHalf(); }
+    modal.keepHalf = false;
+    smUpdateSave();
+    smSyncView();
+  }
+  function smSyncView() {      // ligne choisie (clic sur son texte bleu ou dans sa case de nom) : la fenêtre passe à gauche, le visuel apparaît à droite
+    const ov = $('simModal'), it = modal && modal.view === 'edit' && modal.sel != null ? modal.items[modal.sel] : null;
+    if (!ov) return;
+    const show = !!modal && modal.view === 'edit' && (!!it || modal.hist.length > 0 || modal.fut.length > 0);      // sans ligne choisie, le volet reste tant qu'il y a un historique : pour pouvoir annuler / rétablir
+    ov.classList.toggle('withView', show);
+    let pane = ov.querySelector('.smView');
+    if (!show) { if (pane) pane.remove(); return; }
+    if (!pane) { pane = document.createElement('div'); pane.className = 'smView'; ov.append(pane); }
+    simPreview(pane, it);
+  }
+  /* « Modifier » dans le volet : va à la ligne dans Calculs détaillés (onglet, ligne sélectionnée, défilement) ; « Revenir aux modifications » rouvre la fenêtre telle qu'elle était (nom, noms saisis, ligne choisie). */
+  const simBackShow = st => { simBackState = st; renderSimHead(); };
+  function simBackHide() { if (simBackState) { simBackState = null; renderSimHead(); } }
+  function simBackRestore() {      // rouvre la fenêtre en tenant compte de ce qui a changé entre-temps ; chaque valeur retirée, renommée ou ajoutée est une étape d'historique à part (annulable une à une)
+    const st = simBackState; if (!st) return;
+    const cur = new Map(fromCurrent().map(x => [x.sk, x])), was = new Set(st.snapChecks || []), selSk = st.selSk;
+    st.hist = st.hist || []; st.fut = [];
+    const step = fn => { st.hist.push(JSON.stringify({ items: st.items, sel: st.sel, dup: st.dup })); if (st.hist.length > 20) st.hist.shift(); fn(); };      // instantané avant chaque changement
+    [...was].filter(k => !cur.has(k) && st.items.some(i => i.sk === k)).forEach(k => step(() => { st.items = st.items.filter(i => i.sk !== k); }));      // décochées entre-temps : n'apparaissent plus
+    st.items.filter(i => cur.has(i.sk) && (st.snapNames || {})[i.sk] !== sim.names[i.sk] && i.name !== cur.get(i.sk).name).forEach(i => step(() => { i.name = cur.get(i.sk).name; }));      // renommées entre-temps : le nouveau nom l'emporte
+    [...cur.keys()].filter(k => !was.has(k) && !st.items.some(i => i.sk === k)).forEach(k => step(() => { st.items.push({ ...cur.get(k) }); }));      // cochées entre-temps : ajoutées en fin de liste, une à une
+    const at = selSk ? st.items.findIndex(i => i.sk === selSk) : -1; st.sel = !selSk ? null : at >= 0 ? at : st.items.length ? Math.min(st.sel == null ? 0 : st.sel, st.items.length - 1) : null;
+    openSimModal('edit', null, st);
+  }
+  function smPark() {      // quitte la fenêtre en gardant son état (pour « Revenir aux modifications ») : noms saisis appliqués à la config active, lignes cochées mémorisées
+    const st = modal;
+    if (st.id && st.id === simCfg.current) { st.items.forEach(i => { if (sim.checks.includes(i.sk)) { const n = (i.name || '').trim(); if (n) sim.names[i.sk] = n; else delete sim.names[i.sk]; } }); simSave(); }      // noms saisis mais pas encore validés : ils apparaissent déjà dans Calculs détaillés (config active)
+    st.snapChecks = [...sim.checks]; st.snapNames = { ...sim.names }; closeSimModal(); return st;
+  }
+  function simOpenDetails() { $('details').classList.add('open'); $('detBtn').classList.add('on'); renderDetails(G.compute(vpOf(), S)); }
+  function simGoto(k) {
+    const t = String(k).split('|')[0], r = G.compute(vpOf(), S); if (!r || !r.valid) return false;
+    let T = buildDetails(r)[t]; if (!T) return false;
+    let i = T.rows.findIndex(x => x.sk === k);
+    if (i < 0 && t === 'vpe') { vpe.flt = ['', '']; T = buildDetails(r)[t]; i = T.rows.findIndex(x => x.sk === k); }      // ligne cachée par un filtre : on le lève
+    if (i < 0) return false;
+    $('details').classList.add('open'); $('detBtn').classList.add('on');
+    tab = t; selRow = i; renderDetails(r); scrollToRow(selRow); return true;
+  }
+  /* La ligne choisie est soit au-dessus de la moitié de la fenêtre, soit maintenue à la moitié : c'est le défilement de la liste qui le garantit (appelé après une sélection ou un appui sur les flèches). */
+  function smKeepHalf() {
+    const list = document.querySelector('#simModal .smList'), row = list && list.querySelector('.smRow.sel'); if (!row) return;
+    const lr = list.getBoundingClientRect(), rr = row.getBoundingClientRect(), mid = lr.height / 2, c = rr.top - lr.top + rr.height / 2;      // centre de la ligne dans la zone visible de la liste
+    if (c > mid) list.scrollTop += c - mid;                                    // en dessous de la moitié : on la remonte à la moitié
+    else if (rr.top < lr.top) list.scrollTop += rr.top - lr.top - 4;           // cachée en haut : on la ramène en vue
+  }
+  /* Visuel d'une valeur : le(s) graphique(s) de son onglet (Faisceau, Écran, Pixels : 1 fenêtre ; VP à écran : 3 fenêtres l'une sous l'autre) avec la ligne / le point en surbrillance jaune.
+     Même dessin que Calculs détaillés (V.draw + drawPrim), recadré automatiquement ; la valeur est reprise dans le titre. */
+  function simPreview(pane, it) {
+    if (it) simPreview0(pane, it);
+    else { pane.className = 'smView'; pane.innerHTML = '<div class="smFig smNone">Sélectionnez une valeur (clic sur son texte bleu ou dans sa case de nom) pour voir où elle se trouve.</div><div class="smPaneFoot"><span class="smHist"></span></div>'; }
+    smUpdateHist();
+  }
+  function simPreview0(pane, it) {
+    const foot = go => `<div class="smPaneFoot">${go ? '<button type="button" class="hbtn smGo" data-a="goto" title="Aller à cette valeur dans Calculs détaillés (un bouton permettra de revenir ici)">Modifier</button>' : ''}<span class="smHist"></span></div>`;
+    const n = modal.items.length, ar = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
+    const bar = `<div class="smNavBar"><button type="button" data-a="pv" data-d="-1" title="Valeur précédente" aria-label="Valeur précédente"${n > 1 ? '' : ' disabled'}>${ar('M6 15l6-6 6 6')}</button><span>${modal.sel + 1}/${n}</span><button type="button" data-a="pv" data-d="1" title="Valeur suivante" aria-label="Valeur suivante"${n > 1 ? '' : ' disabled'}>${ar('M6 9l6 6 6-6')}</button></div>`;
+    const nm = `<div class="smSelNm">${esc((it.name || '').trim() || it.label)}</div>`;      // le nom donné à la valeur, sinon le texte bleu
+    const msg = t => { pane.className = 'smView'; pane.innerHTML = nm + bar + `<div class="smFig smNone">${t}</div>` + foot(false); };
+    const r = lastR && lastR.valid ? lastR : G.compute(vpOf(), S);
+    if (!r || !r.valid) return msg('Faisceau hors écran : aucun visuel.');
+    const t = String(it.sk).split('|')[0], tabs = buildDetails(r), T = tabs[t], rw = T && T.rows.find(x => x.sk === it.sk);
+    if (!rw || !rw.hl || !rw.hl.length) return msg('Cette valeur n’existe pas (ou n’a pas de visuel) dans le calcul actuel.');
+    const val = String(rw.val).replace(/<[^>]*>/g, ''), step = t === 'quad' || t === 'scr';
+    pane.className = 'smView' + (T.views.length > 1 ? ' multi' : '');
+    pane.innerHTML = nm + bar + T.views.map(() => '<div class="smFig"><svg></svg></div>').join('') + foot(true);
+    pane.querySelectorAll('.smFig svg').forEach((svg, vi) => {
+      const V = T.views[vi], [x0, x1, y0, y1] = V.b, F = frame(svg, x0, x1, y0, y1, Math.max(x1 - x0, y1 - y0) * 0.08 + 0.05, false, step || t === 'px' ? 44 : undefined);
+      V.draw(svg, F);
+      if (V.t) svg.append(el('text', { x: 8, y: F.H - 8, fill: '#8b98a6', 'font-size': 10.5 }, { face: 'vue de face', side: 'vue de côté', top: 'vue de dessus' }[V.t] || V.t));
+      (rw.one ? [rw.hl[0]] : rw.hl).filter(p => (p.vw || 0) === vi).forEach(p => drawPrim(svg, F, p));      // surbrillance jaune
+      if (rw.rt) { const pk = rw.one ? 0 : -1; rw.rt.filter(m => (m.vw || 0) === vi && (pk < 0 || m.pi === pk)).forEach(m => drawPrim(svg, F, m)); }
+      if (vi === 0) svg.append(el('text', { x: 10, y: 22, fill: HL, 'font-size': 13, 'font-weight': 800 }, (rw.t || rw.n) + ' : ' + val));
+    });
+  }
+  /* Annuler / rétablir dans la fenêtre de modification : instantanés (nom de la config, lignes, noms saisis, ligne choisie) ; la frappe d'un même champ est regroupée (1 s de pause = nouvelle étape). */
+  const smBaseOf = () => JSON.stringify({ n: (modal.name || '').trim(), i: modal.items.map(i => i.sk + '\u0001' + (i.name || '').trim()) });
+  function smUpdateSave() {      // bouton Valider : absent à l'ouverture ; il apparaît (vert, ✓, clignotement léger) dès la moindre modification
+    const b = document.querySelector('#simModal [data-a=save]'); if (!b || !modal || modal.view !== 'edit') return;
+    const d = smBaseOf() !== modal.base; if (b.classList.contains('dirty') === d && b.dataset.init) return;
+    b.dataset.init = '1'; b.classList.toggle('dirty', d);
+    b.innerHTML = ic('ok'); b.title = b.ariaLabel = 'Valider les modifications'; b.tabIndex = d ? 0 : -1;
+  }
+  const smSnap = () => JSON.stringify({ items: modal.items, sel: modal.sel, dup: modal.dup });      // les valeurs enregistrées (lignes, noms) ; pas le nom de la config
+  function smPush() { modal.hist.push(smSnap()); if (modal.hist.length > 20) modal.hist.shift(); modal.fut = []; }      // mémorise jusqu'à 20 pas
+  function smTyping(key) { const now = Date.now(); if (modal.typKey !== key || now - (modal.typT || 0) > 1000) { smPush(); smUpdateHist(); } modal.typKey = key; modal.typT = now; }
+  function smRestore(s) { const o = JSON.parse(s); modal.items = o.items; modal.sel = o.sel != null && o.sel < o.items.length ? o.sel : null; modal.dup = o.dup; modal.typKey = null; drawSimModal(); }
+  function smUpdateHist() {      // boutons annuler / rétablir (volet de droite, à droite de « Modifier ») : seulement quand une modification a eu lieu (ou a été annulée, donc à rétablir)
+    const h = document.querySelector('#simModal .smHist'); if (!h || !modal) return;
+    const bt = (a, d, t, off) => `<button type="button" class="smHb" data-a="${a}" title="${t}" aria-label="${t}"${off ? ' disabled' : ''}><svg viewBox="0 0 24 24"><path d="${d}"/></svg></button>`;
+    h.innerHTML = modal.hist.length || modal.fut.length ? bt('undo', 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5', 'Annuler la dernière modification', !modal.hist.length) + bt('redo', 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5', 'Rétablir', !modal.fut.length) : '';
   }
   function simModalInput(e) {
     const f = e.target.dataset && e.target.dataset.f; if (!modal) return;
-    if (f === 'name') modal.name = e.target.value; else if (f === 'item') modal.items[+e.target.dataset.i].name = e.target.value;
+    if (f === 'dup') {      // nouvelle config : « partir de zéro » ou dupliquer une config existante (lignes + noms), annulable
+      const c = cfgOf(e.target.value); smPush();
+      if (c) { if (!(modal.name || '').trim() || modal.name === modal.dupName) { modal.name = c.name + ' (copie)'; modal.dupName = modal.name; } modal.items = c.items.map(i => ({ ...i })); }
+      else { if (modal.name === modal.dupName) modal.name = ''; modal.dupName = ''; modal.items = []; }
+      modal.dup = e.target.value; modal.sel = null; drawSimModal(); return;
+    }
+    if (f === 'item') smTyping('item' + e.target.dataset.i);
+    if (f === 'name') modal.name = e.target.value; else if (f === 'item') { modal.items[+e.target.dataset.i].name = e.target.value; if (+e.target.dataset.i === modal.sel) { const s = document.querySelector('#simModal .smSelNm'), it = modal.items[modal.sel]; if (s) s.textContent = (it.name || '').trim() || it.label; } }
+    smUpdateSave();
   }
   function simModalClick(e) {
     const b = e.target.closest && e.target.closest('[data-a]'); if (!b || !modal) return;
@@ -1142,10 +1356,21 @@
     else if (a === 'new') openSimModal('edit', null);
     else if (a === 'edit') openSimModal('edit', id);
     else if (a === 'del' && !FIXED.includes(id)) { if (delConfirm === id) { simCfg.cfgs = simCfg.cfgs.filter(c => c.id !== id); if (simCfg.current === id) simCfg.current = ''; delConfirm = null; simChanged(); } else delConfirm = id; drawSimModal(); }
-    else if (a === 'rm') { modal.items.splice(+b.dataset.i, 1); drawSimModal(); }
-    else if (a === 'sync') { modal.items = fromCurrent(); drawSimModal(); }
+    else if (a === 'addrow') { const st = smPark(); st.selSk = null; st.sel = null; simOpenDetails(); simBackShow(st); }      // « + » : on va dans Calculs détaillés pour cocher une ligne de plus
+    else if (a === 'goto') { if (modal.sel != null) { const it = modal.items[modal.sel], st = smPark(); st.selSk = it.sk; if (simGoto(it.sk)) simBackShow(st); else openSimModal('edit', null, st); } }
+    else if (a === 'pv') { const n = modal.items.length; if (n > 1) { modal.sel = ((modal.sel == null ? 0 : modal.sel) + (+b.dataset.d) + n) % n; modal.keepHalf = true; drawSimModal(); } }
+    else if (a === 'pick') { const i = +b.dataset.i; modal.sel = modal.sel === i ? null : i; modal.keepHalf = true; drawSimModal(); }
+    else if (a === 'rm') { smPush(); modal.items.splice(+b.dataset.i, 1); modal.sel = null; drawSimModal(); }
+    else if (a === 'undo') { if (modal.hist.length) { modal.fut.push(smSnap()); smRestore(modal.hist.pop()); } }
+    else if (a === 'redo') { if (modal.fut.length) { modal.hist.push(smSnap()); smRestore(modal.fut.pop()); } }
     else if (a === 'save') {
       const nm = (modal.name || '').trim(); if (!nm) { const i = document.querySelector('#simModal .smName'); if (i) { i.classList.add('bad'); i.focus(); } return; }
+      if (modal.saving) return; modal.saving = true; b.classList.add('saving');      // le bouton cesse de clignoter : on le voit 200 ms, puis la fenêtre se ferme en fondu (1000 ms)
+      setTimeout(() => { const ov = $('simModal'); if (!ov || !modal) return; ov.classList.add('fading'); setTimeout(() => { if (modal) smSave(nm); }, 1000); }, 200);
+    }
+  }
+  function smSave(nm) {      // enregistre (après le fondu), ferme la fenêtre et applique
+    {
       const items = modal.items.map(i => ({ sk: i.sk, label: i.label, name: (i.name || '').trim(), snap: i.snap }));
       if (modal.id) { const c = cfgOf(modal.id); c.name = nm; c.items = items; if (simCfg.current === c.id) { sim.checks = items.map(i => i.sk); sim.names = {}; items.forEach(i => { if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = i.snap; }); } closeSimModal(); simChanged(); }
       else { const c = { id: 'c' + Date.now().toString(36), name: nm, items }; simCfg.cfgs.push(c); closeSimModal(); applyCfg(c.id); }
@@ -1748,7 +1973,7 @@
       const nmEl = e.target.closest('.nm');
       if (nmEl) {                                                         // nom : valider / modifier (la ligne n'est pas sélectionnée)
         const k = rows[+nmEl.closest('.m').dataset.i].sk;
-        if (e.target.closest('.nmOk')) { const v = sim.draft.trim(); if (v) sim.names[k] = v; else delete sim.names[k]; sim.editing = null; simSave(); renderDetails(r); }
+        if (e.target.closest('.nmOk')) { const v = sim.draft.trim(); if (v) sim.names[k] = v; else delete sim.names[k]; sim.editing = null; simSave(); renderSimHead(); renderDetails(r); }
         else if (e.target.closest('.nmEd')) { sim.editing = k; sim.draft = sim.names[k] || ''; sim.focusNm = true; renderDetails(r); }
         return;
       }
@@ -1756,7 +1981,7 @@
       if (ck) {                                                           // case à cocher : valeur affichée dans les simulations (3 au plus, les autres cases se grisent)
         const k = rows[+ck.closest('.m').dataset.i].sk, at = sim.checks.indexOf(k);
         if (at >= 0) { sim.checks.splice(at, 1); delete sim.names[k]; if (sim.editing === k) sim.editing = null; } else { sim.checks.push(k); sim.editing = k; sim.draft = ''; sim.focusNm = true; }      // cochée : on peut lui donner un nom
-        simSave(); renderDetails(r); return;
+        simSave(); renderSimHead(); renderDetails(r); return;
       }
       const b = e.target.closest('.m'); if (!b || e.target.closest('.medit')) return;                    // un appui dans les champs de modification ne redessine pas
       if (+b.dataset.i === selRow && rows[selRow] && rows[selRow].d && !e.target.closest('b.pxv')) { if (tipWas === b) { tipWas = null; return; } showTipNow(b); return; }      // un nouvel appui sur une ligne dont la vignette est ouverte la referme      // ligne déjà active : un nouvel appui ouvre sa vignette (le « i »)
@@ -1825,7 +2050,7 @@
       ni.oninput = () => { sim.draft = ni.value; };
       ni.onkeydown = e => {
         e.stopPropagation();
-        if (e.key === 'Enter') { const v = sim.draft.trim(); if (v) sim.names[k] = v; else delete sim.names[k]; sim.editing = null; simSave(); renderDetails(r); }
+        if (e.key === 'Enter') { const v = sim.draft.trim(); if (v) sim.names[k] = v; else delete sim.names[k]; sim.editing = null; simSave(); renderSimHead(); renderDetails(r); }
         else if (e.key === 'Escape') { sim.editing = null; renderDetails(r); }
       };
       if (sim.focusNm) { sim.focusNm = false; ni.focus(); }
@@ -1989,7 +2214,7 @@
     $('title').textContent = titles[b.dataset.p];
     const calc = b.dataset.p === 'calc';
     $('title').style.display = calc ? 'none' : '';      // pas de titre sur la page Calcul
-    ['locks', 'auto', 'cfgBtn', 'detBtn'].forEach(id => $(id).style.display = calc ? '' : 'none');
+    ['locks', 'auto', 'cfgBtn', 'calcWrap'].forEach(id => $(id).style.display = calc ? '' : 'none');
     if (!calc) $('details').classList.remove('open');
     if (calc) { refreshVps(); render(); }
   };
