@@ -1064,12 +1064,25 @@
   const simCfg = { on: false, current: '', cfgs: [{ id: 'A', name: 'Config A', items: [] }, { id: 'B', name: 'Config B', items: [] }, { id: 'C', name: 'Config C', items: [] }] };
   const simColor = ['#07a61c', '#93b509'];
   const SIM_KEY = 'vp.sim.v1';
+  /* RÉGLAGE PAR DÉFAUT de la Config A : celle de tout nouvel utilisateur (premier lancement, rien en mémoire) ; Réglages > « Rétablir la Config A par défaut » y revient.
+     Pour changer ce défaut : régler la Config A voulue, puis copier ses lignes (clé, nom, copie) ici. */
+  const DEFAULT_CFG_A = [
+    {"sk": "px|Pixel", "label": "Pixel", "name": "Taille pixels", "snap": {"name": "Pixel", "val": "1,96 mm"}},
+    {"sk": "vpe|Longueurs|A–B|base,vp", "label": "A–B", "name": "ligne VP à centre base", "snap": {"val": "9,12 m", "x": false, "pts": ["base", "vp"], "cust": [], "name": "A–B", "f": "√(Δx² + Δy² + Δz²)", "cat": "Longueurs"}},
+    {"sk": "vpe|Longueurs|A–B|fD,fC", "label": "A–B", "name": "base faisceau (D-C)", "snap": {"val": "3,77 m", "x": false, "pts": ["fD", "fC"], "cust": [], "name": "A–B", "f": "√(Δx² + Δy² + Δz²)", "cat": "Longueurs"}}
+  ];
+  const defaultCfgA = () => JSON.parse(JSON.stringify(DEFAULT_CFG_A));
   let simIdx = new Map();                                                // dernières lignes connues : clé → { name (texte bleu), val }
   const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  try { const j = JSON.parse(localStorage.getItem(SIM_KEY) || 'null'); if (j) { simCfg.on = !!j.on; simCfg.current = j.current || ''; if (Array.isArray(j.cfgs) && j.cfgs.length) simCfg.cfgs = j.cfgs; sim.checks = j.checks || []; sim.names = j.names || {}; sim.snap = j.snap || {}; } } catch (_) { /* pas de mémoire */ }
-  ['A', 'B', 'C'].forEach((id, i) => { if (!simCfg.cfgs.some(c => c.id === id)) simCfg.cfgs.splice(i, 0, { id, name: 'Config ' + id, items: [] }); });      // Config A, B, C existent toujours : une mémoire où l'une manque (supprimée avant) la retrouve, vide
+  let simFirstRun = true;
+  try { const j = JSON.parse(localStorage.getItem(SIM_KEY) || 'null'); if (j) { simFirstRun = false; simCfg.on = !!j.on; simCfg.current = j.current || ''; if (Array.isArray(j.cfgs) && j.cfgs.length) simCfg.cfgs = j.cfgs; sim.checks = j.checks || []; sim.names = j.names || {}; sim.snap = j.snap || {}; } } catch (_) { /* pas de mémoire */ }
+  ['A', 'B', 'C'].forEach((id, i) => { if (!simCfg.cfgs.some(c => c.id === id)) simCfg.cfgs.splice(i, 0, { id, name: 'Config ' + id, items: [] }); });
+  if (simFirstRun) {      // premier lancement : la Config A par défaut est chargée (les valeurs s'affichent dès que le bouton vert est activé)
+    const a = simCfg.cfgs.find(c => c.id === 'A'); a.items = defaultCfgA(); simCfg.current = 'A';
+    a.items.forEach(i => { sim.checks.push(i.sk); if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = { ...i.snap }; });
+  }      // Config A, B, C existent toujours : une mémoire où l'une manque (supprimée avant) la retrouve, vide
   const simSave = () => { try { localStorage.setItem(SIM_KEY, JSON.stringify({ on: simCfg.on, current: simCfg.current, cfgs: simCfg.cfgs, checks: sim.checks, names: sim.names, snap: sim.snap })); } catch (_) { /* stockage indisponible */ } };
-  const IC = { ok: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', del: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/>', edit: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/>', add: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', sync: '<path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5"/>' };
+  const IC = { ok: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', del: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/>', edit: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/>', add: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', eye: '<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', sync: '<path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5"/>' };
   const ic = n => `<svg viewBox="0 0 24 24">${IC[n]}</svg>`;
   const simLabel = k => (simIdx.get(k) || {}).name || String(k).split('|')[1] || k;
   const simItem = (k, i) => { const o = simIdx.get(k); return `<span class="simItem" style="color:${simColor[i < sim.FIRST ? 0 : 1]}"><em>${esc(sim.names[k] || o.name)}</em> : <b>${o.val}</b></span>`; };
@@ -1079,6 +1092,7 @@
     sim.checks.forEach(k => { const o = simIdx.get(k); if (o) sim.snap[k] = { ...sim.snap[k], name: o.name, val: o.val, f: o.f, cat: o.cat }; else if (sim.snap[k]) simIdx.set(k, { sk: k, ...sim.snap[k], kept: true }); });
     sim.checks = sim.checks.filter(k => simIdx.has(k));                  // sans copie connue (ancienne mémoire), une ligne disparue ne peut être gardée
     Object.keys(sim.snap).forEach(k => { if (!sim.checks.includes(k)) delete sim.snap[k]; });
+    cfgFollow();
     simSave();
     const sig = sim.checks.map(k => (simIdx.get(k) || {}).val).join('|'); if (simSig !== null && sig !== simSig && simCfg.on) simPulse(); simSig = sig;      // valeurs qui bougent → le switch s'anime
     const tog = simTogHtml();      // bouton vert à gauche des valeurs : active / désactive la fonction (comme le bouton rond du haut de ∑ Calculs)
@@ -1159,6 +1173,19 @@
   const cfgOf = id => simCfg.cfgs.find(c => c.id === id);
   const FIXED = ['A', 'B', 'C'];                                         // Config A, B, C : modifiables, jamais supprimables
   const fromCurrent = () => sim.checks.map(sk => ({ sk, label: simLabel(sk), name: sim.names[sk] || '', snap: sim.snap[sk] }));
+  /* Chaque ligne d'une config garde une copie (valeur, dessin, points créés) pour être recalculée quand elle n'est plus sélectionnée. Celle de la config ACTIVE suit la ligne en direct : sans cela, une valeur modifiée revenait
+     à l'ancienne en validant la fenêtre de modification, en changeant de config ou en rouvrant la config. Elle ne suit que si les points de la ligne sont les mêmes (valeur et dessin recalculés, ex. VP déplacé) : les points créés
+     par leurs coordonnées ont des numéros (#1, #2…) qui repartent de zéro à chaque ouverture, une ligne de même clé mais d'autres coordonnées ne doit pas écraser la config (une modification voulue passe par cfgAdopt). */
+  const snapDef = s => JSON.stringify([s.pts || null, s.cust || null]);
+  function cfgFollow() {
+    const cc = cfgOf(simCfg.current); if (!cc) return;
+    cc.items.forEach(i => { const s = sim.snap[i.sk]; if (s && sim.checks.includes(i.sk) && (!i.snap || snapDef(i.snap) === snapDef(s))) i.snap = { ...s }; });
+  }
+  function cfgAdopt(id) {      // les coordonnées du point créé `id` viennent d'être modifiées par l'utilisateur : les lignes de la config active qui l'utilisent adoptent ces coordonnées
+    const cc = cfgOf(simCfg.current); if (!cc) return;
+    cc.items.forEach(i => { const s = sim.snap[i.sk]; if (s && sim.checks.includes(i.sk) && (s.cust || []).some(c => c.id === id)) i.snap = { ...s }; });
+    simSave();
+  }
   function simChanged() { simSave(); renderSimHead(); renderSimSettings(); render(); }
   function applyCfg(id) {
     const c = cfgOf(id); simCfg.current = id; sim.checks = []; sim.names = {}; sim.editing = null; simNav = -1;
@@ -1187,21 +1214,21 @@
     const el = $('simHead'); if (!el) return;
     const cur = cfgOf(simCfg.current), n = sim.checks.length, dis = simCfg.on ? '' : ' disabled';
     const opts = (cur ? '' : '<option value="" disabled hidden selected>Choisir une configuration</option>') + simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${c.id === simCfg.current ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
-    const act = (a, ico, title, off, cls = '') => `<button type="button" class="${cls}" data-act="${a}" title="${title}" aria-label="${title}"${off ? ' disabled' : ''}>${ic(ico)}</button>`;
+    const act = (a, ico, title, off, cls = '', tip = true) => `<button type="button" class="${cls}" data-act="${a}"${tip ? ` title="${title}"` : ''} aria-label="${title}"${off ? ' disabled' : ''}>${ic(ico)}</button>`;
     const canDel = cur && !FIXED.includes(cur.id), dirty = cfgDirty(cur), pos = simNav >= 0 && simNav < n ? `${simNav + 1}/${n}` : String(n);      // « 3/5 » : ligne active / total ; « 5 » : aucune ligne active
     el.innerHTML = `<span class="simNavBox"><span class="simCnt"${simCfg.on ? '' : ' style="visibility:hidden"'}>valeurs</span><span class="simNav"><button type="button" data-n="-1" aria-label="Ligne précédente de la configuration" title="Ligne précédente de la configuration"${dis}><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button><span class="simPos"${simCfg.on ? '' : ' style="visibility:hidden"'}>${pos}</span><button type="button" data-n="1" aria-label="Ligne suivante de la configuration" title="Ligne suivante de la configuration"${dis}><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></span></span>`
       + `<button class="simSw${simCfg.on ? ' on' : ''}" id="simSw" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Désactiver les valeurs dans les simulations' : 'Activer les valeurs dans les simulations'}">${simRound(false)}</button>`
       + `<select id="simSel" aria-label="Configuration"${dis}>${opts}</select>`
-      + `<span class="simAct">${act('add', 'add', 'Ajouter une configuration', false)}${act('del', hdrArm === 'del' ? 'ok' : 'del', hdrArm === 'del' ? 'Confirmer la suppression (cliquer de nouveau)' : canDel ? 'Supprimer la configuration' : 'Supprimer la configuration (impossible pour A, B et C)', !canDel, hdrArm === 'del' ? 'danger' : '')}${act('edit', 'edit', 'Modifier la configuration', !cur)}${act('sync', 'ok', 'Mettre à jour la config', !dirty)}</span>`
-      + (simBackState ? `<button type="button" class="simBackBtn" title="Revenir aux modifications" aria-label="Revenir aux modifications"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>` : '');
+      + `<span class="simAct">${act('add', 'add', 'Ajouter une configuration', false)}${act('del', hdrArm === 'del' ? 'ok' : 'del', hdrArm === 'del' ? 'Confirmer la suppression (cliquer de nouveau)' : canDel ? 'Supprimer la configuration' : 'Supprimer la configuration (impossible pour A, B et C)', !canDel, hdrArm === 'del' ? 'danger' : '')}${simBackState ? `<button type="button" class="simBackBtn" title="Revenir aux modifications" aria-label="Revenir aux modifications"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>` : act('edit', 'eye', 'aperçu', !simCfg.cfgs.length)}${act('sync', 'ok', 'Appliquer les modifications à la config', !dirty, dirty ? 'dirty' : '', false)}</span>${dirty ? '<span class="simSaveLbl" role="button" tabindex="0">appliquer modifications</span>' : ''}`;
     el.querySelectorAll('.simNav button').forEach(b => { b.onclick = () => simStep(+b.dataset.n); });
     const bk = el.querySelector('.simBackBtn'); if (bk) bk.onclick = simBackRestore;
+    const sl = el.querySelector('.simSaveLbl'); if (sl) sl.onclick = () => el.querySelector('.simAct [data-act=sync]').click();
     $('simSw').onclick = () => { simCfg.on = !simCfg.on; simChanged(); };
-    el.querySelectorAll('.simAct button').forEach(b => {
+    el.querySelectorAll('.simAct button[data-act]').forEach(b => {
       b.onclick = () => {
         const a = b.dataset.act, c = cfgOf(simCfg.current);
         if (a === 'add') openSimModal('edit', null);
-        else if (a === 'edit' && c) openSimModal('edit', c.id);
+        else if (a === 'edit') openSimModal('edit', (c || simCfg.cfgs[0]).id);      // panneau des configurations : par défaut la config active
         else if (a === 'sync' && c && cfgDirty(c)) { c.items = fromCurrent(); simSave(); renderSimHead(); }
         else if (a === 'del' && c && !FIXED.includes(c.id)) {
           if (hdrArm === 'del') { clearTimeout(hdrArmT); hdrArm = ''; simCfg.cfgs = simCfg.cfgs.filter(x => x.id !== c.id); simCfg.current = ''; simChanged(); } else hdrFlash('del', 3000);
@@ -1224,12 +1251,38 @@
       modal.sel = i; ov.querySelectorAll('.smList .smRow').forEach((r, k) => r.classList.toggle('sel', k === i));
       smSyncView(); smKeepHalf();
     });
-    ov.addEventListener('keydown', e => { if (e.key === 'Escape') closeSimModal(); else if (e.key === 'Enter' && e.target.closest('.smWin input') && modal && modal.view === 'edit') simModalClick({ target: ov.querySelector('[data-a=save]') }); });
+    ov.addEventListener('focusout', e => { if (e.target.classList && e.target.classList.contains('smCfgIn')) cfgRenameEnd(); });
+    ov.addEventListener('keydown', e => { if (e.target.classList && e.target.classList.contains('smCfgIn')) { if (e.key === 'Enter') { e.preventDefault(); cfgRenameEnd(); } else if (e.key === 'Escape') { e.stopPropagation(); cfgRenameEnd(true); } return; }
+      if (e.key === 'Escape') closeSimModal(); else if (e.key === 'Enter' && e.target.closest('.smWin input') && modal && modal.view === 'edit') simModalClick({ target: ov.querySelector('button[data-a=save]') }); });
     if (restore) modal = restore; else modal = { view, id: id || null };
     modal.hist = modal.hist || []; modal.fut = modal.fut || [];
-    if (!restore && view === 'edit') { const c = id ? cfgOf(id) : null; modal.name = c ? c.name : ''; modal.items = c ? c.items.map(i => ({ ...i })) : []; modal.dup = ''; }      // nouvelle config : liste vide (on repart de zéro) ; la liste déroulante permet de dupliquer une config existante
+    if (!restore && view === 'edit') {
+      const c = id ? cfgOf(id) : null; modal.name = c ? c.name : ''; modal.dup = '';
+      if (c && c.id === simCfg.current) { modal.items = fromCurrent().map(i => ({ ...i })); modal.base = smBaseOfCfg(c); }      // config active : la fenêtre montre exactement ce qui est coché dans Calculs détaillés (même non enregistré) ; « Valider » apparaît tant que cela diffère de la config enregistrée
+      else modal.items = c ? c.items.map(i => ({ ...i })) : [];
+    }      // nouvelle config : liste vide (on repart de zéro) ; la liste déroulante permet de dupliquer une config existante
     if (!modal.base && modal.view === 'edit') modal.base = smBaseOf();      // état à l'ouverture : sert à savoir s'il y a quelque chose à valider
     drawSimModal();
+  }
+  /* menu déroulant du panneau : choisir la configuration à afficher (par défaut la config active) ; la config chargée (active) est en vert et en gras */
+  function cfgMenuHtml() {
+    const ld = id => id === simCfg.current ? ' loaded' : '', nm = (modal.name || '').trim() || (cfgOf(modal.id) || {}).name || '';
+    const opt = c => {
+      if (c.id !== modal.id) return `<div class="smCfgOpt${ld(c.id)}" role="button" tabindex="0" data-a="cfgpick" data-id="${esc(c.id)}"><span>${esc(c.name)}</span></div>`;
+      if (modal.renaming) return `<div class="smCfgOpt on${ld(c.id)}"><input class="smCfgIn" data-f="name" maxlength="30" value="${esc(modal.name)}" aria-label="Nom de la configuration" placeholder="nom de la configuration"></div>`;
+      return `<div class="smCfgOpt on${ld(c.id)}" role="button" tabindex="0" data-a="cfgpick" data-id="${esc(c.id)}"><span>${esc(nm)}</span><i class="smCfgEd" role="button" tabindex="0" data-a="cfgren" aria-label="Modifier le nom">${ic('edit')}</i></div>`;      // stylo : modifier le nom de la configuration affichée
+    };
+    return `<div class="smCfgDd"><button type="button" class="smCfgBtn${ld(modal.id)}" data-a="cfgmenu" aria-label="Choisir une configuration"><span>${esc(nm)}</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><div class="smCfgList"${modal.menuOpen ? '' : ' hidden'}>${simCfg.cfgs.map(opt).join('')}</div></div>`;
+  }
+  function cfgMenuRefresh(focus) {      // redessine le menu seul (le reste de la fenêtre, boutons compris, n'est pas touché)
+    const dd = document.querySelector('#simModal .smCfgDd'); if (!dd || !modal) return;
+    dd.outerHTML = cfgMenuHtml();
+    if (focus) { const i = document.querySelector('#simModal .smCfgIn'); if (i) { i.focus(); i.select(); } }
+  }
+  function cfgRenameEnd(cancel) {      // fin de la saisie du nom : un nom vide ou Échap rend l'ancien
+    if (!modal || !modal.renaming) return;
+    modal.renaming = false; if (cancel || !(modal.name || '').trim()) modal.name = modal.nameBefore;
+    cfgMenuRefresh(); smUpdateSave();
   }
   function drawSimModal() {
     const w = document.querySelector('#simModal .smWin'); if (!w || !modal) return;
@@ -1238,7 +1291,7 @@
     if (modal.view === 'manage') {
       w.innerHTML = `<h4>Configurations</h4><div class="smList">${simCfg.cfgs.map(c => `<div class="smRow"><span class="smNm">${esc(c.name)}<small>${c.items.length} valeur${c.items.length > 1 ? 's' : ''}</small></span>${btn('edit', 'edit', 'Modifier', `data-id="${esc(c.id)}"`)}${FIXED.includes(c.id) ? '' : btn('del', delConfirm === c.id ? 'ok' : 'del', delConfirm === c.id ? 'Confirmer la suppression' : 'Supprimer', `data-id="${esc(c.id)}"`, delConfirm === c.id ? 'danger' : '')}</div>`).join('') || '<p class="smEmpty">Aucune configuration.</p>'}</div><div class="smFoot">${btn('new', 'add', 'Ajouter une config')}${btn('close', 'x', 'Fermer')}</div>`;
     } else {
-      w.innerHTML = `<div class="smTop"><div class="smTitle"><h4>${modal.id ? 'Modifier la configuration' : 'Nouvelle configuration'}</h4><div class="smAct">${btn('save', 'ok', 'Valider', '', 'ok')}${btn('close', 'x', 'Annuler')}</div></div><input class="smName" data-f="name" placeholder="nom de la configuration" maxlength="30" value="${esc(modal.name)}">${modal.id ? '' : `<select class="smDup" data-f="dup" aria-label="Dupliquer une configuration existante"><option value="">Nouvelle configuration vide</option>${simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${modal.dup === c.id ? ' selected' : ''}>Dupliquer : ${esc(c.name)} (${c.items.length})</option>`).join('')}</select>`}</div><div class="smList">${modal.items.map((it, i) => `<div class="smRow${modal.sel === i ? ' sel' : ''}${modal.id && modal.id === simCfg.current && !sim.checks.includes(it.sk) ? ' miss' : ''}"${modal.id && modal.id === simCfg.current && !sim.checks.includes(it.sk) ? ' title="Cette valeur n’est pas active dans Calculs détaillés (décochée, ou introuvable dans le calcul actuel) : elle n’est pas comptée là-bas"' : ''}><span class="smLbl" role="button" tabindex="0" data-a="pick" data-i="${i}" title="Voir où se trouve cette valeur">${esc(it.label)}</span><input data-f="item" data-i="${i}" placeholder="nom (facultatif)" maxlength="40" value="${esc(it.name)}">${btn('rm', 'x', 'Retirer cette valeur', `data-i="${i}"`)}</div>`).join('') || '<p class="smEmpty">Aucune valeur : cochez des lignes dans ∑ Calculs, puis utilisez la coche « Mettre à jour la config ».</p>'}<div class="smAddRow" role="button" tabindex="0" data-a="addrow" title="Ajouter une valeur : ouvre Calculs détaillés (un bouton permettra de revenir ici)" aria-label="Ajouter une valeur">${ic('add')}</div></div>`;
+      w.innerHTML = `<div class="smTop"><div class="smTitle"><h4>${modal.id ? 'Panneau des configurations' : 'Nouvelle configuration'}</h4><div class="smAct"><span class="smOkWrap"><button class="smIc ok" data-a="save" aria-label="Appliquer les modifications">${ic('ok')}</button><span class="smOkLbl" role="button" data-a="save">appliquer modifications</span></span>${btn('close', 'x', 'Annuler')}</div></div>${modal.id ? cfgMenuHtml() : `<input class="smName" data-f="name" placeholder="nom de la configuration" maxlength="30" value="${esc(modal.name)}">`}${modal.id ? '' : `<select class="smDup" data-f="dup" aria-label="Dupliquer une configuration existante"><option value="">Nouvelle configuration vide</option>${simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${modal.dup === c.id ? ' selected' : ''}>Dupliquer : ${esc(c.name)} (${c.items.length})</option>`).join('')}</select>`}</div><div class="smList">${modal.items.map((it, i) => `<div class="smRow${modal.sel === i ? ' sel' : ''}${modal.id && modal.id === simCfg.current && !sim.checks.includes(it.sk) ? ' miss' : ''}"${modal.id && modal.id === simCfg.current && !sim.checks.includes(it.sk) ? ' title="Cette valeur n’est pas active dans Calculs détaillés (décochée, ou introuvable dans le calcul actuel) : elle n’est pas comptée là-bas"' : ''}><span class="smLbl" role="button" tabindex="0" data-a="pick" data-i="${i}" title="Voir où se trouve cette valeur">${esc(it.label)}</span><input data-f="item" data-i="${i}" placeholder="nom (facultatif)" maxlength="40" value="${esc(it.name)}">${btn('rm', 'x', 'Retirer cette valeur', `data-i="${i}"`)}</div>`).join('') || '<p class="smEmpty">Aucune valeur : cochez des lignes dans ∑ Calculs, puis appliquez les modifications.</p>'}<div class="smAddRow" role="button" tabindex="0" data-a="addrow" title="Ajouter une valeur : ouvre Calculs détaillés (un bouton permettra de revenir ici)" aria-label="Ajouter une valeur">${ic('add')}</div></div>`;
     }
     const newList = w.querySelector('.smList'); if (newList) { newList.scrollTop = keepTop; if (modal.view === 'edit' && modal.sel != null && modal.keepHalf) smKeepHalf(); }
     modal.keepHalf = false;
@@ -1260,18 +1313,25 @@
   function simBackHide() { if (simBackState) { simBackState = null; renderSimHead(); } }
   function simBackRestore() {      // rouvre la fenêtre en tenant compte de ce qui a changé entre-temps ; chaque valeur retirée, renommée ou ajoutée est une étape d'historique à part (annulable une à une)
     const st = simBackState; if (!st) return;
-    const cur = new Map(fromCurrent().map(x => [x.sk, x])), was = new Set(st.snapChecks || []), selSk = st.selSk;
+    const cur = new Map(fromCurrent().map(x => [x.sk, x])), was = new Set(st.snapChecks || []), selSk = st.selSk, isCur = !!st.id && st.id === simCfg.current, other = !!st.id && !isCur;
     st.hist = st.hist || []; st.fut = [];
+    if (st.id && st.id === simCfg.current) st.items.forEach(i => { const c = cur.get(i.sk); if (c && c.snap) i.snap = c.snap; });      // copies des lignes de la config active : celles d'avant le départ sont périmées (valeur ou points modifiés entre-temps)
     const step = fn => { st.hist.push(JSON.stringify({ items: st.items, sel: st.sel, dup: st.dup })); if (st.hist.length > 20) st.hist.shift(); fn(); };      // instantané avant chaque changement
-    [...was].filter(k => !cur.has(k) && st.items.some(i => i.sk === k)).forEach(k => step(() => { st.items = st.items.filter(i => i.sk !== k); }));      // décochées entre-temps : n'apparaissent plus
-    st.items.filter(i => cur.has(i.sk) && (st.snapNames || {})[i.sk] !== sim.names[i.sk] && i.name !== cur.get(i.sk).name).forEach(i => step(() => { i.name = cur.get(i.sk).name; }));      // renommées entre-temps : le nouveau nom l'emporte
-    [...cur.keys()].filter(k => !was.has(k) && !st.items.some(i => i.sk === k)).forEach(k => step(() => { st.items.push({ ...cur.get(k) }); }));      // cochées entre-temps : ajoutées en fin de liste, une à une
+    if (!other) [...was].filter(k => !cur.has(k) && st.items.some(i => i.sk === k)).forEach(k => step(() => { st.items = st.items.filter(i => i.sk !== k); }));      // décochées entre-temps : n'apparaissent plus
+    if (!other) st.items.filter(i => cur.has(i.sk) && (st.snapNames || {})[i.sk] !== sim.names[i.sk] && i.name !== cur.get(i.sk).name).forEach(i => step(() => { i.name = cur.get(i.sk).name; }));      // renommées entre-temps : le nouveau nom l'emporte
+    if (!other) [...cur.keys()].filter(k => !was.has(k) && !st.items.some(i => i.sk === k)).forEach(k => step(() => { st.items.push({ ...cur.get(k) }); }));
+    if (isCur) {      // config active : la fenêtre montre toujours exactement les valeurs cochées dans Calculs détaillés
+      st.items.filter(i => !cur.has(i.sk)).forEach(i => step(() => { st.items = st.items.filter(x => x.sk !== i.sk); }));
+      [...cur.keys()].filter(k => !st.items.some(i => i.sk === k)).forEach(k => step(() => { st.items.push({ ...cur.get(k) }); }));
+    }      // cochées entre-temps : ajoutées en fin de liste, une à une
     const at = selSk ? st.items.findIndex(i => i.sk === selSk) : -1; st.sel = !selSk ? null : at >= 0 ? at : st.items.length ? Math.min(st.sel == null ? 0 : st.sel, st.items.length - 1) : null;
     openSimModal('edit', null, st);
   }
   function smPark() {      // quitte la fenêtre en gardant son état (pour « Revenir aux modifications ») : noms saisis appliqués à la config active, lignes cochées mémorisées
     const st = modal;
-    if (st.id && st.id === simCfg.current) { st.items.forEach(i => { if (sim.checks.includes(i.sk)) { const n = (i.name || '').trim(); if (n) sim.names[i.sk] = n; else delete sim.names[i.sk]; } }); simSave(); }      // noms saisis mais pas encore validés : ils apparaissent déjà dans Calculs détaillés (config active)
+    if (st.id && st.id === simCfg.current) { st.items.forEach(i => { if (sim.checks.includes(i.sk)) { const n = (i.name || '').trim(); if (n) sim.names[i.sk] = n; else delete sim.names[i.sk]; } });
+      sim.checks.filter(k => !st.items.some(i => i.sk === k)).forEach(k => { sim.checks.splice(sim.checks.indexOf(k), 1); delete sim.names[k]; });      // une valeur retirée dans la fenêtre est aussi décochée dans Calculs détaillés : les deux contenus restent identiques
+      simSave(); }      // noms saisis mais pas encore validés : ils apparaissent déjà dans Calculs détaillés (config active)
     st.snapChecks = [...sim.checks]; st.snapNames = { ...sim.names }; closeSimModal(); return st;
   }
   function simOpenDetails() { $('details').classList.add('open'); $('detBtn').classList.add('on'); renderDetails(G.compute(vpOf(), S)); }
@@ -1322,11 +1382,12 @@
   }
   /* Annuler / rétablir dans la fenêtre de modification : instantanés (nom de la config, lignes, noms saisis, ligne choisie) ; la frappe d'un même champ est regroupée (1 s de pause = nouvelle étape). */
   const smBaseOf = () => JSON.stringify({ n: (modal.name || '').trim(), i: modal.items.map(i => i.sk + '\u0001' + (i.name || '').trim()) });
+  const smBaseOfCfg = c => JSON.stringify({ n: (c.name || '').trim(), i: c.items.map(i => i.sk + '\u0001' + (i.name || '').trim()) });
   function smUpdateSave() {      // bouton Valider : absent à l'ouverture ; il apparaît (vert, ✓, clignotement léger) dès la moindre modification
-    const b = document.querySelector('#simModal [data-a=save]'); if (!b || !modal || modal.view !== 'edit') return;
+    const b = document.querySelector('#simModal button[data-a=save]'); if (!b || !modal || modal.view !== 'edit') return;
     const d = smBaseOf() !== modal.base; if (b.classList.contains('dirty') === d && b.dataset.init) return;
     b.dataset.init = '1'; b.classList.toggle('dirty', d);
-    b.innerHTML = ic('ok'); b.title = b.ariaLabel = 'Valider les modifications'; b.tabIndex = d ? 0 : -1;
+    b.innerHTML = ic('ok'); b.ariaLabel = 'Appliquer les modifications'; b.tabIndex = d ? 0 : -1;      // pas d'info-bulle
   }
   const smSnap = () => JSON.stringify({ items: modal.items, sel: modal.sel, dup: modal.dup });      // les valeurs enregistrées (lignes, noms) ; pas le nom de la config
   function smPush() { modal.hist.push(smSnap()); if (modal.hist.length > 20) modal.hist.shift(); modal.fut = []; }      // mémorise jusqu'à 20 pas
@@ -1353,6 +1414,9 @@
     const b = e.target.closest && e.target.closest('[data-a]'); if (!b || !modal) return;
     const a = b.dataset.a, id = b.dataset.id;
     if (a === 'close') closeSimModal();
+    else if (a === 'cfgmenu') { modal.menuOpen = !modal.menuOpen; const l = b.nextElementSibling; if (l) l.hidden = !modal.menuOpen; }
+    else if (a === 'cfgren') { modal.nameBefore = modal.name; modal.renaming = true; modal.menuOpen = true; cfgMenuRefresh(true); }
+    else if (a === 'cfgpick') { if (id !== modal.id) { applyCfg(id); openSimModal('edit', id); } else { modal.menuOpen = false; cfgMenuRefresh(); } }      // choisir une configuration la charge (comme le menu de l'en-tête) : elle devient la config active, en vert ; les modifications non appliquées de la précédente ne sont pas gardées
     else if (a === 'new') openSimModal('edit', null);
     else if (a === 'edit') openSimModal('edit', id);
     else if (a === 'del' && !FIXED.includes(id)) { if (delConfirm === id) { simCfg.cfgs = simCfg.cfgs.filter(c => c.id !== id); if (simCfg.current === id) simCfg.current = ''; delConfirm = null; simChanged(); } else delConfirm = id; drawSimModal(); }
@@ -1365,26 +1429,33 @@
     else if (a === 'redo') { if (modal.fut.length) { modal.hist.push(smSnap()); smRestore(modal.fut.pop()); } }
     else if (a === 'save') {
       const nm = (modal.name || '').trim(); if (!nm) { const i = document.querySelector('#simModal .smName'); if (i) { i.classList.add('bad'); i.focus(); } return; }
-      if (modal.saving) return; modal.saving = true; b.classList.add('saving');      // le bouton cesse de clignoter : on le voit 200 ms, puis la fenêtre se ferme en fondu (1000 ms)
+      if (modal.saving) return; modal.saving = true; const sb = document.querySelector('#simModal button[data-a=save]'); if (sb) sb.classList.add('saving');      // le bouton cesse de clignoter : on le voit 200 ms, puis la fenêtre se ferme en fondu (1000 ms)
       setTimeout(() => { const ov = $('simModal'); if (!ov || !modal) return; ov.classList.add('fading'); setTimeout(() => { if (modal) smSave(nm); }, 1000); }, 200);
     }
   }
   function smSave(nm) {      // enregistre (après le fondu), ferme la fenêtre et applique
     {
-      const items = modal.items.map(i => ({ sk: i.sk, label: i.label, name: (i.name || '').trim(), snap: i.snap }));
+      const live = k => modal.id && modal.id === simCfg.current && sim.checks.includes(k) && sim.snap[k];      // config active : la copie en direct de la ligne est la plus récente (celle de la fenêtre date de son ouverture)
+      const items = modal.items.map(i => ({ sk: i.sk, label: i.label, name: (i.name || '').trim(), snap: live(i.sk) ? { ...sim.snap[i.sk] } : i.snap }));
       if (modal.id) { const c = cfgOf(modal.id); c.name = nm; c.items = items; if (simCfg.current === c.id) { sim.checks = items.map(i => i.sk); sim.names = {}; items.forEach(i => { if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = i.snap; }); } closeSimModal(); simChanged(); }
       else { const c = { id: 'c' + Date.now().toString(36), name: nm, items }; simCfg.cfgs.push(c); closeSimModal(); applyCfg(c.id); }
     }
   }
   /* ---- page Réglages : liste des configurations ---- */
+  let resetArm = 0;      // « Rétablir la Config A par défaut » : demande une confirmation (deuxième appui dans les 4 s)
   function renderSimSettings() {
     const box = $('simCfgBox'); if (!box) return;
     box.onclick = e => {
       const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, id = b.dataset.id;
+      if (a === 'resetA') {
+        if (resetArm) { clearTimeout(resetArm); resetArm = 0; const c = cfgOf('A'); c.name = 'Config A'; c.items = defaultCfgA(); if (simCfg.current === 'A') applyCfg('A'); else simChanged(); }
+        else { resetArm = setTimeout(() => { resetArm = 0; renderSimSettings(); }, 4000); renderSimSettings(); }
+        return;
+      }
       if (a === 'new') openSimModal('edit', null); else if (a === 'edit') openSimModal('edit', id);
       else if (a === 'del' && !FIXED.includes(id)) { if (delConfirm === id) { simCfg.cfgs = simCfg.cfgs.filter(c => c.id !== id); if (simCfg.current === id) simCfg.current = ''; delConfirm = null; simChanged(); } else { delConfirm = id; renderSimSettings(); } }
     };
-    box.innerHTML = `<h3>Valeurs dans les simulations</h3><p class="sub">Configurations mémorisées (une sélection de lignes de calcul avec leurs noms). Elles se choisissent en haut de ∑ Calculs.</p>${simCfg.cfgs.map(c => `<div class="smRow"><span class="smNm">${esc(c.name)}<small>${c.items.length} valeur${c.items.length > 1 ? 's' : ''}</small></span><button class="smIc" data-a="edit" data-id="${esc(c.id)}" title="Modifier" aria-label="Modifier">${ic('edit')}</button>${FIXED.includes(c.id) ? '' : `<button class="smIc${delConfirm === c.id ? ' danger' : ''}" data-a="del" data-id="${esc(c.id)}" title="${delConfirm === c.id ? 'Confirmer la suppression' : 'Supprimer'}" aria-label="Supprimer">${ic(delConfirm === c.id ? 'ok' : 'del')}</button>`}</div>`).join('')}<div class="smFoot"><button class="smIc" data-a="new" title="Ajouter une config" aria-label="Ajouter une config">${ic('add')}</button></div>`;
+    box.innerHTML = `<h3>Valeurs dans les simulations</h3><p class="sub">Configurations mémorisées (une sélection de lignes de calcul avec leurs noms). Elles se choisissent en haut de ∑ Calculs.</p>${simCfg.cfgs.map(c => `<div class="smRow"><span class="smNm">${esc(c.name)}<small>${c.items.length} valeur${c.items.length > 1 ? 's' : ''}</small></span><button class="smIc" data-a="edit" data-id="${esc(c.id)}" title="Modifier" aria-label="Modifier">${ic('edit')}</button>${FIXED.includes(c.id) ? '' : `<button class="smIc${delConfirm === c.id ? ' danger' : ''}" data-a="del" data-id="${esc(c.id)}" title="${delConfirm === c.id ? 'Confirmer la suppression' : 'Supprimer'}" aria-label="Supprimer">${ic(delConfirm === c.id ? 'ok' : 'del')}</button>`}</div>`).join('')}<div class="smFoot"><button class="smIc" data-a="new" title="Ajouter une config" aria-label="Ajouter une config">${ic('add')}</button></div><div class="smReset"><button class="hbtn${resetArm ? ' danger' : ''}" data-a="resetA">${resetArm ? 'Confirmer : écraser la Config A (appuyer de nouveau)' : 'Rétablir la Config A par défaut'}</button><p class="sub">Revient au calibrage d’origine de la Config A (valeurs et noms), celui de tout nouvel utilisateur. Les autres configurations ne changent pas.</p></div>`;
   }
   const dfl = { quad: { full: false, flt: ['', ''] }, scr: { full: false, flt: ['', ''] } };      // Faisceau, Écran : « calculs plus exhaustifs » et deux filtres propres à chaque onglet
   const fmtEdit = v => String(+v.toFixed(4)).replace('.', ',');                // coordonnée proposée à la modification
@@ -2024,6 +2095,7 @@
           if (bad.some(Boolean)) { ['eX', 'eY', 'eZ'].forEach((id, k) => $(id).classList.toggle('bad', bad[k])); return; }
           const c = vpe.custom.find(q => q.id === vpe.editing); if (c) { c.p = p; c.label = `Coordonnées (${p.map(v => fm(v, 2)).join(' ; ')})`; vpe.focus = 'ABCDE'[vpe.pts.indexOf(c.id)]; }
           vpe.editing = null; selRow = -1; renderDetails(r);
+          if (c) cfgAdopt(c.id);      // les lignes cochées de la config active qui utilisent ce point reprennent ses nouvelles coordonnées
         };
         ['eX', 'eY', 'eZ'].forEach((id, k) => { const i = $(id); i.oninput = () => { vpe.edraft[k] = i.value; i.classList.remove('bad'); }; i.onkeydown = e => { if (e.key === 'Enter') commit(); else if (e.key === 'Escape') { vpe.editing = null; renderDetails(r); } }; i.onfocus = () => i.select(); });
         $('eOk').onclick = commit; $('eCancel').onclick = () => { vpe.editing = null; renderDetails(r); };

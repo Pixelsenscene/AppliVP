@@ -647,6 +647,10 @@ header .toast.show{transform:none}
 .simAct button:hover:not(:disabled){background:rgba(255,255,255,.04)}
 .simAct button:disabled{cursor:default;opacity:.45}
 .simAct button.danger svg{stroke:var(--bad)}
+.simAct button.dirty svg,.simAct button.dirty:not(:disabled) svg{stroke:#07a61c;stroke-width:2.4}      /* config modifiée : coche verte qui clignote doucement + « enregistrer les modifications » à côté */
+.simAct button.dirty{animation:smSaveBlink 1.6s ease-in-out infinite}
+.simSaveLbl{color:#07a61c;font-weight:700;font-size:12px;white-space:nowrap;cursor:pointer;animation:smSaveBlink 1.6s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.simAct button.dirty,.simSaveLbl{animation:none}}
 .simNav button{width:22px;height:22px;padding:0;border:0;background:transparent;border-radius:50%;display:grid;place-items:center;opacity:.8}
 .simNav button:hover:not(:disabled){opacity:1;background:rgba(7,166,28,.15)}
 .simNav button:disabled{opacity:.25}
@@ -672,8 +676,24 @@ header .toast.show{transform:none}
 .smHb:disabled{opacity:.35;cursor:default}
 .smRow.miss .smLbl{opacity:.45;text-decoration:line-through}      /* valeur de la config qui n'est pas active dans Calculs détaillés */
 .smTop .smName{margin-bottom:0}
+.smCfgDd{margin-bottom:8px}
+.smCfgBtn{width:100%;height:36px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--txt);font-size:14px;font-weight:500;cursor:pointer;box-sizing:border-box}
+.smCfgBtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.7}
+.smCfgList{margin-top:4px;max-height:168px;overflow:auto;border-radius:10px;border:1px solid var(--line);background:var(--panel2)}      /* s'ouvre dans la fenêtre (elle ne rogne rien) */
+.smCfgOpt{padding:8px 10px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px}
+.smCfgEd{width:26px;height:26px;margin:-4px -4px -4px 0;display:grid;place-items:center;border-radius:8px;color:var(--txt);opacity:.7;flex:none}
+.smCfgEd:hover{opacity:1;background:rgba(255,255,255,.08)}
+.smCfgEd svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.smCfgIn{width:100%;height:30px;margin:-5px 0;padding:0 8px;border-radius:8px;border:1px solid #07a61c;background:var(--panel);color:var(--txt);font-size:14px;font-weight:600;box-sizing:border-box}
+.smCfgOpt:hover{background:rgba(255,255,255,.06)}
+.smCfgOpt.on{background:rgba(77,163,255,.12)}
+.smCfgOpt.loaded .smCfgIn{color:#07a61c;font-weight:800}
+.smCfgBtn.loaded,.smCfgOpt.loaded{color:#07a61c;font-weight:800}      /* configuration chargée */
 .smDup{width:100%;height:34px;margin-top:8px;padding:0 8px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--txt);font-size:13px;box-sizing:border-box}      /* nouvelle config : partir de zéro ou dupliquer */
-.simBackBtn{width:30px;height:30px;padding:0;border:1px solid #07a61c;border-radius:50%;background:transparent;display:grid;place-items:center;cursor:pointer;flex:none;animation:simBackBlink 1.1s ease-in-out infinite}      /* retour aux modifications : flèche seule, qui clignote */
+.simBackBtn{width:30px;height:30px;padding:0;border:1.5px dashed #07a61c;border-radius:50%;background:transparent;display:grid;place-items:center;cursor:pointer;flex:none;animation:simBackBlink 1.1s ease-in-out infinite}      /* retour aux modifications : flèche seule, qui clignote */
+.simAct button.simBackBtn{width:30px;height:30px;border:1.5px dashed #07a61c;border-radius:50%;background:transparent;animation:simBackBlink 1.1s ease-in-out infinite}      /* à la place de l'œil : le style des icônes de .simAct ne doit pas l'écraser */
+.simAct button.simBackBtn svg,.simAct button.simBackBtn:not(:disabled) svg{stroke:#07a61c;stroke-width:2.2}
+@media (prefers-reduced-motion:reduce){.simAct button.simBackBtn{animation:none}}
 .simBackBtn svg{width:18px;height:18px;fill:none;stroke:#07a61c;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 @keyframes simBackBlink{0%,100%{opacity:1}50%{opacity:.3}}
 @media (prefers-reduced-motion:reduce){.simBackBtn{animation:none}}
@@ -709,14 +729,19 @@ header .toast.show{transform:none}
 .smFoot{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}
 .smIc{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--panel2);color:var(--txt);display:grid;place-items:center;padding:0;flex:none}
 .smIc svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.smIc.ok{background:#07a61c;border-color:#07a61c;color:#fff}
-/* Valider : invisible à l'ouverture ; il apparaît en vert (✓) avec un clignotement léger dès la moindre modification ; à la validation, le clignotement s'arrête (200 ms) puis la fenêtre se ferme en fondu (1000 ms) */
-.smIc.ok{transition:opacity .25s}
+.smIc.ok{background:transparent;border-color:transparent;color:#07a61c}      /* le ✓ seul, en vert */
+/* Valider : invisible à l'ouverture ; dès la moindre modification, seul le ✓ apparaît en vert avec un clignotement léger (pas de rond), et « appliquer modifications » dessous. À la validation : le rond vert apparaît, le ✓ devient blanc, le clignotement s'arrête (200 ms), puis la fenêtre se ferme en fondu (1000 ms) */
+.smIc.ok{transition:opacity .25s,background .15s,color .15s}
 .smIc.ok:not(.dirty){opacity:0;pointer-events:none}
 .smIc.ok.dirty{animation:smSaveBlink 1.6s ease-in-out infinite}
-.smIc.ok.saving{animation:none}
+.smIc.ok.saving{animation:none;background:#07a61c;border-color:#07a61c;color:#fff;opacity:1}
+.smOkWrap{position:relative;display:flex}
+.smOkLbl{position:absolute;right:0;top:100%;margin-top:3px;font-size:12px;font-weight:700;color:#07a61c;white-space:nowrap;cursor:pointer;transition:opacity .25s}
+.smIc.ok:not(.dirty) + .smOkLbl,.smIc.ok.saving + .smOkLbl{opacity:0;pointer-events:none}
+.smIc.ok.dirty + .smOkLbl{animation:smSaveBlink 1.6s ease-in-out infinite}
+.smTitle{margin-bottom:24px}
 @keyframes smSaveBlink{0%,100%{opacity:1}50%{opacity:.72}}
-@media (prefers-reduced-motion:reduce){.smIc.ok.dirty{animation:none}}
+@media (prefers-reduced-motion:reduce){.smIc.ok.dirty,.smIc.ok.dirty + .smOkLbl{animation:none}}
 #simModal{transition:opacity 1s ease}
 #simModal.fading{opacity:0;pointer-events:none}
 .smIc.danger{background:var(--bad);border-color:var(--bad);color:#fff}
@@ -831,3 +856,6 @@ nav .navName{font-weight:inherit;font-size:110%}      /* « Appli VP » : même 
 /* bandeau latéral plus creusé : ombres intérieures marquées (bord droit, haut, bas) */
 nav{box-shadow:inset 6px 0 14px -2px rgba(0,0,0,.75),inset -2px 0 6px rgba(0,0,0,.45),inset 0 8px 14px -6px rgba(0,0,0,.6),inset 0 -8px 14px -6px rgba(0,0,0,.6)}
 @media (max-width:900px), (orientation:portrait){ nav .sp{display:none} }
+.smReset{margin-top:14px}
+.smReset .sub{margin:8px 0 0}
+.hbtn.danger{border-color:var(--bad);color:var(--bad)}
