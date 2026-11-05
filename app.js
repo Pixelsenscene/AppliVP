@@ -794,16 +794,16 @@
   const vpTilt = (cx, cy, deg) => S.rot ? { transform: `rotate(${deg} ${cx} ${cy})` } : {};
   function drawSide(r) {
     const svg = $('svgSide'); if (!r.valid) { svg.replaceChildren(); return; }
-    const top = G.rayHit(r.B, 0, 1), bot = G.rayHit(r.B, 0, -1);
-    const maxz = Math.max(S.sh, S.z, top[1]) + 0.2, minz = Math.min(0, bot[1], S.z);          // le VP peut passer sous la ligne du sol (z < 0)
+    const qz = r.B.quad.map(p => p[1]), zHi = Math.max(...qz), zLo = Math.min(...qz);        // étendue verticale réelle du faisceau = ses 4 coins A B C D (pas le milieu des bords : pan / roll / keystone le font déborder), comme la vue de face
+    const maxz = Math.max(S.sh, S.z, zHi) + 0.2, minz = Math.min(0, zLo, S.z);          // le VP peut passer sous la ligne du sol (z < 0)
     const mBot = dispBot(svg), man = dispManual(svg), F = man ? viewFrame(svg, manualBounds(svg, dv.svgSide, 30, mBot || 30), 0, false, undefined, mBot) : viewFrame(svg, [-0.3, Math.max(S.y * 1.25, S.y + 2), minz - 0.2, maxz + Math.max(1, 0.2 * maxz)], 0.3, false, undefined, mBot);
     const [bx0, bx1] = F.b; gridLines(svg, F, ...(man ? visRange(F) : F.b));
     svg.append(el('line', { x1: F.X(bx0), x2: F.X(bx1), y1: F.Y(0), y2: F.Y(0), stroke: '#556', 'stroke-width': 2 }));
-    svg.append(el('polygon', { points: `${F.X(S.y)},${F.Y(S.z)} ${F.X(0)},${F.Y(top[1])} ${F.X(0)},${F.Y(bot[1])}`, fill: 'rgba(77,163,255,.16)', stroke: '#4da3ff', class: 'bglow' }));
+    svg.append(el('polygon', { points: `${F.X(S.y)},${F.Y(S.z)} ${F.X(0)},${F.Y(zHi)} ${F.X(0)},${F.Y(zLo)}`, fill: 'rgba(77,163,255,.16)', stroke: '#4da3ff', class: 'bglow' }));
     /* deux voies collées l'une à l'autre : l'écran en rouge à l'arrière, la projection (verte = utile, rouge = perdue) devant, côté VP */
     /* deux voies collées : à l'arrière la ligne de l'écran (rouge vif) ; devant, côté VP, la projection utile (verte). La projection hors écran (rouge sombre)
        prolonge la ligne de l'écran, sur la même voie, sans la remplacer ; elle n'est donc plus dans la continuité du vert. */
-    const LANE = 4.2, SLANE = 2.7, OLANE = 4.5, x0s = F.X(0), lo = Math.min(bot[1], top[1]), hi = Math.max(bot[1], top[1]);
+    const LANE = 4.2, SLANE = 2.7, OLANE = 4.5, x0s = F.X(0), lo = zLo, hi = zHi;
     const back = (a, b, c, w) => svg.append(el('line', { x1: x0s - w / 2, x2: x0s - w / 2, y1: F.Y(a), y2: F.Y(b), stroke: c, 'stroke-width': w }));      // bord côté projection commun : l'écran (fin) reste collé au vert, l'orange (plus épais) déborde vers l'arrière
     if (lo < 0) back(lo, Math.min(0, hi), LOST_DARK, OLANE);                                                              // projection sous l'écran
     if (hi > S.sh) back(Math.max(S.sh, lo), hi, LOST_DARK, OLANE);                                                        // projection au-dessus de l'écran
@@ -823,14 +823,14 @@
   }
   function drawTop(r) {
     const svg = $('svgTop'); if (!r.valid) { svg.replaceChildren(); return; }
-    const L = G.rayHit(r.B, -1, 0), R = G.rayHit(r.B, 1, 0);
-    const hx = Math.max(Math.abs(L[0]), Math.abs(R[0]), S.sw / 2, Math.abs(S.x)) * 1.15 + 0.5;
+    const qx = r.B.quad.map(p => p[0]), xL = Math.min(...qx), xR = Math.max(...qx);          // étendue horizontale réelle du faisceau = ses 4 coins A B C D (pas le milieu des bords : pan / roll / keystone le font déborder), comme la vue de face
+    const hx = Math.max(Math.abs(xL), Math.abs(xR), S.sw / 2, Math.abs(S.x)) * 1.15 + 0.5;
     const hud = isBig(svg) && svg.closest('.card').querySelector('.hud');                    // plein écran : l'écran est en haut, sous le bandeau d'état → on réserve sa hauteur
     const mTop = hud ? Math.max(30, hud.getBoundingClientRect().bottom - svg.getBoundingClientRect().top + 48) : undefined;
     const mBot = dispBot(svg), man = dispManual(svg), F = man ? viewFrame(svg, manualBounds(svg, dv.svgTop, mTop == null ? 30 : mTop, mBot || 30), 0, true, mTop, mBot) : viewFrame(svg, [-hx, hx, -0.2, Math.max(S.y * 1.25, S.y + 2)], 0.3, true, mTop, mBot);      // écran en haut, VP en bas ; x < 0 à gauche, x > 0 à droite (comme la vue de face)
     gridLines(svg, F, ...(man ? visRange(F) : F.b));
-    svg.append(el('polygon', { points: `${F.X(S.x)},${F.Y(S.y)} ${F.X(L[0])},${F.Y(0)} ${F.X(R[0])},${F.Y(0)}`, fill: 'rgba(77,163,255,.16)', stroke: '#4da3ff', class: 'bglow' }));
-    const LANE = 4.2, SLANE = 2.7, OLANE = 4.5, y0s = F.Y(0), lo = Math.min(L[0], R[0]), hi = Math.max(L[0], R[0]);       // voies collées : écran (rouge vif, à l'arrière) puis projection utile (verte, côté VP)
+    svg.append(el('polygon', { points: `${F.X(S.x)},${F.Y(S.y)} ${F.X(xL)},${F.Y(0)} ${F.X(xR)},${F.Y(0)}`, fill: 'rgba(77,163,255,.16)', stroke: '#4da3ff', class: 'bglow' }));
+    const LANE = 4.2, SLANE = 2.7, OLANE = 4.5, y0s = F.Y(0), lo = xL, hi = xR;       // voies collées : écran (rouge vif, à l'arrière) puis projection utile (verte, côté VP)
     const back = (a, b, c, w) => svg.append(el('line', { x1: F.X(a), x2: F.X(b), y1: y0s - w / 2, y2: y0s - w / 2, stroke: c, 'stroke-width': w }));      // bord côté projection commun (voir vue de côté)
     if (lo < -S.sw / 2) back(lo, Math.min(-S.sw / 2, hi), LOST_DARK, OLANE);                                              // projection à gauche de l'écran : prolonge sa ligne, en rouge sombre
     if (hi > S.sw / 2) back(Math.max(S.sw / 2, lo), hi, LOST_DARK, OLANE);                                                // projection à droite de l'écran
@@ -842,7 +842,7 @@
       dim(svg, F, [S.x, 0], [S.x, S.y], `y = ${fm(S.y)} m`, [34, 0], [10, 5], 'start', pcol('y', DIM));
       dim(svg, F, [0, S.y], [S.x, S.y], `x = ${fm(S.x)} m`, [0, 30], [0, 22], 'middle', pcol('x', DIM));      // cote sous le VP : décalage du VP par rapport au milieu de l'écran
     } else {                                           // hors grand écran : dimensions en gris discret
-      const xe = Math.max((S.x + L[0]) / 2, (S.x + R[0]) / 2);                  // bord du faisceau à mi-distance : le texte reste à côté, pas dessus
+      const xe = Math.max((S.x + xL) / 2, (S.x + xR) / 2);                 // bord du faisceau à mi-distance : le texte reste à côté, pas dessus
       val(svg, F.X(xe) + 10, F.Y(S.y / 2) + 4, `y = ${fm(S.y)} m`, 'start', pcol('y', GREY), 11);
       val(svg, F.X(S.x), F.Y(S.y) + 34, `x = ${fm(S.x)} m`, 'middle', pcol('x', GREY), 11);      // sous le VP
       val(svg, 10, F.H - 10, `z = ${fm(S.z)} m`, 'start', pcol('z', GREY), 11);
