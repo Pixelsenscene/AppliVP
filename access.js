@@ -113,6 +113,16 @@
   const lock = () => { set(localStorage, K_OK, null); set(sessionStorage, K_SES, null); show(); };
 
   const nv = document.getElementById('navVer'); if (nv) nv.innerHTML = '<b class="navName">Appli VP</b> — version ' + VERSION;
+  /* un appui sur « Appli VP — version x.x.x » (menu latéral) ouvre la fenêtre « à propos » : fond flou, 4 lignes centrées ; un appui (ou Échap) la ferme */
+  if (nv) nv.addEventListener('click', () => {
+    if (document.getElementById('aboutWin')) return;
+    const ov = document.createElement('div'); ov.id = 'aboutWin'; ov.className = 'aboutOv';
+    ov.innerHTML = `<div class="aboutBox" role="dialog" aria-modal="true"><p class="abVer"><b class="navName">Appli VP</b> — version ${esc(VERSION)}</p><p>Conception : Sébastien Dumont</p><p>Application réalisée via Visual Studio Code et Claude IA</p><p>© pixels en scene 2026</p></div>`;
+    const end = () => { ov.remove(); document.removeEventListener('keydown', key, true); };
+    const key = e => { if (e.key === 'Escape') { e.stopPropagation(); end(); } };
+    document.addEventListener('keydown', key, true); ov.addEventListener('click', end);
+    document.body.append(ov);
+  });
   if (gate) {
     const gv = document.getElementById('gateVer'); if (gv) gv.textContent = 'version ' + VERSION;
     const form = document.getElementById('gateForm'), err = document.getElementById('gateErr'), pw = document.getElementById('gatePw');
@@ -128,9 +138,9 @@
   /* Réglages : demander le mot de passe à chaque ouverture · verrouiller maintenant */
   const box = document.getElementById('accessBox');
   if (box) {
-    box.innerHTML = '<h3>Accès</h3><label class="accChk"><input type="checkbox" id="accAsk"><span>Demander le mot de passe à chaque ouverture</span></label><p class="sub">Désactivé : le mot de passe n’est demandé qu’à la première ouverture (et si le mot de passe change).</p><button class="hbtn" id="accLock">Verrouiller maintenant</button>';
-    const chk = document.getElementById('accAsk'); chk.checked = askEvery();
-    chk.addEventListener('change', () => { set(localStorage, K_ASK, chk.checked ? '1' : null); if (chk.checked) set(sessionStorage, K_SES, CFG.hash); });      // la session en cours reste déverrouillée
+    box.innerHTML = '<h3>Accès</h3><label class="accChk"><input type="checkbox" id="accAsk"><span>Demander le mot de passe à chaque ouverture</span></label><p class="sub" id="accNote">Le mot de passe n’est demandé qu’à la première ouverture, ou si le mot de passe a changé.</p><button class="hbtn" id="accLock">Verrouiller maintenant</button>';
+    const chk = document.getElementById('accAsk'), note = document.getElementById('accNote'); chk.checked = askEvery(); const showNote = () => { note.hidden = chk.checked; }; showNote();      // le message n'apparaît que si la case est décochée
+    chk.addEventListener('change', () => { showNote(); set(localStorage, K_ASK, chk.checked ? '1' : null); if (chk.checked) set(sessionStorage, K_SES, CFG.hash); });      // la session en cours reste déverrouillée
     document.getElementById('accLock').addEventListener('click', lock);
   }
   window.VP_VERSION = VERSION;

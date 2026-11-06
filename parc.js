@@ -121,7 +121,7 @@ function usable() {
   if (!Object.keys(out).length) out['Projecteur standard'] = toVP({ name: 'Projecteur standard' });
   return out;
 }
-window.Parc = { usable };
+window.Parc = { usable, openIO: tab => window.VPIO.open(ioSpec(), tab) };
 
 /* ---------- Fenêtre modale, message ---------- */
 function modal(title, html, buttons) {
@@ -158,7 +158,6 @@ page.innerHTML = `
       <button class="hbtn primary" id="padd">＋ Ajouter</button>
       <button class="hbtn" id="pimp">Importer</button>
       <button class="hbtn" id="pexp">Exporter</button>
-      <input type="file" id="pfile" accept=".json,application/json" hidden>
     </div>
     <div class="pbar" id="pbar"></div>
     <div class="pmiss hidden" id="pmiss"></div>
@@ -305,30 +304,30 @@ function save() {
   isNew = false; dirty = false; persist(); renderList(); refreshMiss(); toast('Fiche enregistrée');
 }
 
-/* ---------- Import / export ---------- */
-function exportParc() {
-  const data = { app: 'VP', type: 'parc', version: 1, exportedAt: new Date().toISOString(), projecteurs: recs.map(({ id, ...r }) => r) };
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
-  a.download = `parc-vp-${new Date().toISOString().slice(0, 10)}.json`; document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000); toast(`${recs.length} projecteur${recs.length > 1 ? 's' : ''} exporté${recs.length > 1 ? 's' : ''}`);
-}
-async function importFile(file) {
-  let list;
-  try {
-    const j = JSON.parse(await file.text());
-    if (Array.isArray(j.projecteurs)) list = j.projecteurs.map(clean);
-    else if (j && typeof j === 'object' && Object.values(j).every(v => v && typeof v === 'object' && 'rmin' in v)) list = Object.entries(j).map(([n, v]) => fromLegacy(n, v));
-    else throw new Error('format');
-    list = list.filter(r => r.name);
-    if (!list.length) throw new Error('vide');
-  } catch (e) { await modal('Import impossible', '<p>Ce fichier n\'est pas un parc de projecteurs valide (JSON exporté par cette application, ou ancien format vp_data.json).</p>', [['Fermer', 0]]); return; }
-  const a = await modal('Importer le parc', `<p><b>${list.length}</b> projecteur${list.length > 1 ? 's' : ''} dans « ${esc(file.name)} ».</p>
-    <p><b>Fusionner</b> : ajoute les nouveaux et met à jour ceux qui portent le même nom.<br><b>Remplacer</b> : efface le parc actuel.</p>`,
-    [['Annuler', 'no'], ['Remplacer le parc', 'replace', 'danger'], ['Fusionner', 'merge', 'primary']]);
-  if (a === 'no') return;
-  if (a === 'replace') recs = list;
-  else list.forEach(n => { const o = recs.find(r => r.name.toLowerCase() === n.name.toLowerCase()); if (o) { n.id = o.id; recs[recs.indexOf(o)] = n; } else recs.push(n); });
-  draft = null; persist(); closeSheet(); toast(`${list.length} projecteur${list.length > 1 ? 's' : ''} importé${list.length > 1 ? 's' : ''}`);
+/* ---------- Import / export (fenêtre commune io.js) ---------- */
+function ioSpec() {
+  return {
+    title: 'Parc de vidéo-projecteurs : importer / exporter', noun: ['vidéo-projecteur', 'vidéo-projecteurs'], file: 'parc-vp',
+    list: () => recs.map(r => ({ id: r.id, label: r.name || 'Sans nom', sub: subLine(r) })),
+    presets: [{ id: 'all', label: 'Tous les vidéo-projecteurs', ids: () => recs.map(r => r.id) }],
+    build: ids => ({ app: 'VP', type: 'parc', version: 1, exportedAt: new Date().toISOString(), projecteurs: recs.filter(r => ids.includes(r.id)).map(({ id, ...r }) => r) }),
+    parse(text) {
+      let j, list; try { j = JSON.parse(text); } catch (e) { throw new Error('Ce fichier n\'est pas un fichier JSON lisible.'); }
+      if (j && Array.isArray(j.projecteurs)) list = j.projecteurs.map(clean);
+      else if (j && typeof j === 'object' && !Array.isArray(j) && Object.values(j).length && Object.values(j).every(v => v && typeof v === 'object' && 'rmin' in v)) list = Object.entries(j).map(([n, v]) => fromLegacy(n, v));      // ancien format vp_data.json
+      else throw new Error('Ce fichier ne contient pas de vidéo-projecteurs (fichier « parc » exporté par VP, ou ancien vp_data.json).');
+      list = list.filter(r => r.name);
+      if (!list.length) throw new Error('Aucun vidéo-projecteur valide dans ce fichier (le nom est obligatoire).');
+      return {
+        entries: list.map((r, i) => ({ key: String(i), label: r.name, sub: subLine(r) + (recs.some(o => o.name.toLowerCase() === r.name.toLowerCase()) ? ' · remplace celui du même nom' : ' · nouveau') })),
+        async apply(keys) {
+          if (!(await guard())) return 0;
+          keys.forEach(k => { const n = list[+k], o = recs.find(r => r.name.toLowerCase() === n.name.toLowerCase()); if (o) { n.id = o.id; recs[recs.indexOf(o)] = n; } else recs.push(n); });
+          draft = null; persist(); closeSheet(); toast(`${keys.length} vidéo-projecteur${keys.length > 1 ? 's' : ''} importé${keys.length > 1 ? 's' : ''}`); return keys.length;
+        },
+      };
+    },
+  };
 }
 
 /* ---------- Événements ---------- */
@@ -336,9 +335,8 @@ $('pq').oninput = e => { ui.q = e.target.value; store(UIKEY, ui); renderList(); 
 $('pgroup').onchange = e => { ui.group = e.target.value; store(UIKEY, ui); renderList(); };
 $('psort').onchange = e => { ui.sort = e.target.value; store(UIKEY, ui); renderList(); };
 $('padd').onclick = async () => { if (await guard()) { draft = null; openSheet(null); $('f_name').focus(); } };
-$('pexp').onclick = exportParc;
-$('pimp').onclick = () => $('pfile').click();
-$('pfile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importFile(f); };
+$('pexp').onclick = () => window.VPIO.open(ioSpec(), 'export');
+$('pimp').onclick = () => window.VPIO.open(ioSpec(), 'import');
 $('pmiss').onclick = e => { if (e.target.closest('[data-fillall]')) fillAll(); };
 $('pbar').onclick = e => { const b = e.target.closest('[data-all]'); if (b) setSelected(recs.filter(r => r.selected !== (b.dataset.all === '1')), b.dataset.all === '1'); };
 $('pitems').onclick = async e => {

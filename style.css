@@ -338,7 +338,7 @@ header .toast.show{transform:none}
 .psheet{overflow:auto;-webkit-overflow-scrolling:touch;padding:14px 20px 90px;min-height:0;position:relative}
 .shead{display:flex;align-items:center;gap:12px}
 .shead h3{margin:0;font-size:19px}
-#sback{display:none}
+#sback,#eback{display:none}
 .smiss{border:1px solid var(--warn);border-radius:var(--r);padding:10px 12px;margin:12px 0;display:grid;gap:8px;font-size:13.5px}
 .serr{border:1px solid var(--bad);border-radius:var(--r);padding:10px 12px;margin:12px 0;color:var(--bad);font-size:13.5px}
 .schk{display:flex;align-items:center;gap:10px;margin:12px 0 0;min-height:44px}
@@ -370,7 +370,7 @@ header .toast.show{transform:none}
   .plist{border-right:0}
   .psheet{position:absolute;inset:0;background:var(--bg);display:none;z-index:5}
   .page.parc.sheet .psheet{display:block}
-  #sback{display:flex}
+  #sback,#eback{display:flex}
   .fgrid{grid-template-columns:1fr}
 }
 
@@ -746,7 +746,10 @@ header .toast.show{transform:none}
 #simModal.fading{opacity:0;pointer-events:none}
 .smIc.danger{background:var(--bad);border-color:var(--bad);color:#fff}
 .simCfgBox{max-width:460px;margin-top:18px}
-.simCfgBox h3{margin:0 0 4px;font-size:15px}
+.simCfgBox h3{margin:0 0 2px;font-size:15px}
+.simCfgBox .subS{margin:0 0 8px;font-size:12px;opacity:.85}
+.ioBtn{margin-top:12px;height:40px;padding:0 14px;font-size:13.5px}
+.smFoot + .ioBtn{margin-top:14px}
 .simCfgBox .smRow{padding:6px 0;border-bottom:1px solid var(--line)}
 /* accès par mot de passe */
 .gate{position:fixed;inset:0;z-index:9999;background:var(--bg);display:grid;place-items:center;padding:20px}
@@ -856,6 +859,61 @@ nav .navName{font-weight:inherit;font-size:110%}      /* « Appli VP » : même 
 /* bandeau latéral plus creusé : ombres intérieures marquées (bord droit, haut, bas) */
 nav{box-shadow:inset 6px 0 14px -2px rgba(0,0,0,.75),inset -2px 0 6px rgba(0,0,0,.45),inset 0 8px 14px -6px rgba(0,0,0,.6),inset 0 -8px 14px -6px rgba(0,0,0,.6)}
 @media (max-width:900px), (orientation:portrait){ nav .sp{display:none} }
-.smReset{margin-top:14px}
-.smReset .sub{margin:8px 0 0}
+.smDef{height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);color:var(--txt);font-size:13px;font-weight:600;flex:none}
+.smDef.danger{border-color:var(--bad);color:var(--bad)}
+#defWarn{position:fixed;inset:0;z-index:120;display:grid;place-items:center;background:rgba(8,12,16,.55);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+.dwBox{width:min(380px,90vw);padding:20px;border-radius:16px;background:var(--panel);border:1px solid var(--line);box-shadow:0 18px 50px rgba(0,0,0,.6)}
+.dwBox p{margin:0 0 18px;font-size:15px;font-weight:600;line-height:1.4}
+.dwBtns{display:flex;justify-content:flex-end;gap:10px}
 .hbtn.danger{border-color:var(--bad);color:var(--bad)}
+
+/* ---------- Fenêtre d'import / export de fichiers .json (io.js) ---------- */
+.ioOv{position:fixed;inset:0;z-index:100;display:grid;place-items:center;background:rgba(8,12,16,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:14px}
+.ioWin{width:min(540px,100%);max-height:88vh;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 18px 50px rgba(0,0,0,.6);overflow:hidden}
+.ioHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.ioHead h4{margin:0;font-size:15px}
+.ioX{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--panel2);color:var(--txt);flex:none}
+.ioTabs{display:flex;gap:6px;margin-bottom:12px}
+.ioTabs button{flex:1;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--mut);font-weight:600}
+.ioTabs button.on{color:var(--txt);border-color:var(--acc);background:rgba(77,163,255,.12)}
+.ioBody{display:flex;flex-direction:column;gap:10px;min-height:0;overflow:auto}
+.ioHelp{margin:0;font-size:13px;color:var(--mut);line-height:1.4}
+.ioPre{display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.ioPre label{display:flex;align-items:center;gap:8px;min-height:28px}
+.ioList{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;max-height:34vh;overflow:auto}
+.ioRow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line);font-size:14px;cursor:pointer}
+.ioRow:last-child{border-bottom:0}
+.ioRow input{width:20px;height:20px;accent-color:var(--acc);flex:none}
+.ioNm{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ioRow small{color:var(--mut);font-size:12px;text-align:right}
+.ioNone{margin:0;padding:12px;color:var(--mut)}
+.ioFile{margin:0;font-size:13.5px}
+.ioAll{display:flex;gap:12px;font-size:13px}
+.ioFoot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:2px;min-height:44px}
+.ioMsg{flex:1;font-size:13px;color:var(--mut)}
+.ioOk{color:#07a61c;font-weight:700} .ioBad{color:var(--bad);font-weight:600}
+nav button[data-p=set] span{font-size:10.5px;letter-spacing:-.1px}
+
+/* ---------- Préférences : titres de section « creusés » (même traitement que « Appli VP — version » du menu) + barre de séparation creusée ---------- */
+.simCfgBox{position:relative;padding-top:20px;margin-top:22px}
+.simCfgBox::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;border-top:1px solid rgba(0,0,0,.75);border-bottom:1px solid rgba(255,255,255,.08)}
+.simCfgBox h3{font-size:17px;font-weight:700;letter-spacing:.05em;color:rgba(255,255,255,.6);text-shadow:0 -1px 0 rgba(255,255,255,.1),0 1px 0 rgba(0,0,0,.85),0 2px 3px rgba(0,0,0,.6);margin-bottom:4px}
+.simCfgBox .subS{opacity:.7}
+
+/* Préférences : la page défile (le bas, parcs et crédits, reste accessible) */
+#p-set{min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:calc(40px + env(safe-area-inset-bottom))}
+
+/* Préférences : crédits sur une ligne sous la barre du haut ; la première section commence directement, sans barre au-dessus */
+#p-set .credits{margin:0;padding:0;text-align:left;font-size:11.5px;line-height:1.5;color:var(--mut);opacity:.6}
+#p-set .credits ~ #simCfgBox{margin-top:12px;padding-top:6px}
+#p-set #simCfgBox::before{display:none}
+
+/* fenêtre « à propos » : ouverte par un appui sur « Appli VP — version x.x.x » du menu */
+nav .navVer{pointer-events:auto;cursor:pointer}
+.aboutOv{position:fixed;inset:0;z-index:110;display:grid;place-items:center;background:rgba(8,12,16,.5);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);padding:20px;cursor:pointer}
+.aboutBox{text-align:center;max-width:92vw;cursor:default}
+.aboutBox p{margin:0 0 12px;font-size:15px;color:var(--mut)}
+.aboutBox .abVer{margin-bottom:22px;font-size:24px;font-weight:700;letter-spacing:.12em;color:rgba(255,255,255,.55);text-shadow:0 -1px 0 rgba(255,255,255,.12),0 1px 0 rgba(0,0,0,.85),0 2px 4px rgba(0,0,0,.7);user-select:none}      /* même aspect creusé que dans le menu */
+.aboutBox .navName{font-size:inherit}
+.ioToast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,12px);z-index:130;background:#07a61c;color:#fff;font-weight:650;padding:9px 18px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;box-shadow:0 6px 20px rgba(0,0,0,.45)}
+.ioToast.show{opacity:1;transform:translate(-50%,0)}

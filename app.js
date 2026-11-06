@@ -101,12 +101,18 @@
     return n === 0 ? 'free' : n === g.keys.length ? 'locked' : 'mixed';
   };
 
+  let SCR = [];      // écrans proposés dans Calcul : ceux de la bibliothèque d'écrans (cochés « utilisables »)
+  function fillScrSelect() {
+    SCR = window.Screens ? window.Screens.usable() : (window.SCREEN_DATA || []);
+    const ssel = $('scrsel_s'); if (!ssel) return;
+    ssel.innerHTML = '<option value="">Personnalisé</option>' + SCR.map(p => `<option value="${p.id}">${esc(p.name)} · ${fm(p.sw)} × ${fm(p.sh)} m</option>`).join('');
+  }
   const fillVpSelect = () => { const sel = $('vpsel_s'); sel.innerHTML = ''; Object.keys(VPS).forEach(n => sel.add(new Option(n, n))); };
   /* au retour sur la page Calcul : relit le parc (sélection, fiches modifiées) */
   function refreshVps() {
     VPS = window.Parc.usable();
     if (!VPS[S.vp]) S.vp = Object.keys(VPS)[0];
-    adv._vp = null; fillVpSelect();
+    adv._vp = null; fillVpSelect(); fillScrSelect();
   }
 
   /* ---------- Panneau de réglages ---------- */
@@ -158,8 +164,7 @@
     const cyc = d => { const k = Object.keys(VPS); S.vp = k[(k.indexOf(S.vp) + d + k.length) % k.length]; render(); };
     $('vprev').onclick = () => cyc(-1); $('vnext').onclick = () => cyc(1);
     /* écran : liste de départ ; modifier largeur / hauteur ensuite le fait passer en « Personnalisé » */
-    const ssel = $('scrsel_s'), SCR = window.SCREEN_DATA || [];
-    ssel.innerHTML = '<option value="">Personnalisé</option>' + SCR.map(p => `<option value="${p.id}">${p.name} · ${fm(p.sw)} × ${fm(p.sh)} m</option>`).join('');
+    const ssel = $('scrsel_s'); fillScrSelect();
     const pickScr = id => {
       const p = SCR.find(x => x.id === id); if (!p) { render(); return; }
       S.sw = clampP('sw', p.sw); S.sh = clampP('sh', p.sh); if (st.chain) st.aspect = S.sw / S.sh; render();
@@ -946,7 +951,7 @@
     }
     $('vpsel_s').value = S.vp;
     {
-      const cur = (window.SCREEN_DATA || []).find(p => Math.abs(p.sw - S.sw) < 0.005 && Math.abs(p.sh - S.sh) < 0.005), o = $('scrsel_s');
+      const cur = SCR.find(p => Math.abs(p.sw - S.sw) < 0.005 && Math.abs(p.sh - S.sh) < 0.005), o = $('scrsel_s');
       o.options[0].textContent = `Personnalisé · ${fm(S.sw)} × ${fm(S.sh)} m`; o.value = cur ? cur.id : '';
     }
     $('vpinfo').textContent = `Ratio ${fm(v.rmin)}${v.zoomable ? ' – ' + fm(v.rmax) : ' (fixe)'} · ${v.fw}:${v.fh} · ${v.res} ${v.resW}×${v.resH} · ${fi(v.lm)} lm`;
@@ -1071,14 +1076,16 @@
     {"sk": "vpe|Longueurs|A–B|base,vp", "label": "A–B", "name": "ligne VP à centre base", "snap": {"val": "9,12 m", "x": false, "pts": ["base", "vp"], "cust": [], "name": "A–B", "f": "√(Δx² + Δy² + Δz²)", "cat": "Longueurs"}},
     {"sk": "vpe|Longueurs|A–B|fD,fC", "label": "A–B", "name": "base faisceau (D-C)", "snap": {"val": "3,77 m", "x": false, "pts": ["fD", "fC"], "cust": [], "name": "A–B", "f": "√(Δx² + Δy² + Δz²)", "cat": "Longueurs"}}
   ];
-  const defaultCfgA = () => JSON.parse(JSON.stringify(DEFAULT_CFG_A));
+  const DEFAULT_CFG_B = [], DEFAULT_CFG_C = [];      // à suivre : les réglages par défaut des Config B et C ne sont pas encore définis (vides)
+  const defaultCfg = id => JSON.parse(JSON.stringify({ A: DEFAULT_CFG_A, B: DEFAULT_CFG_B, C: DEFAULT_CFG_C }[id] || []));      // chaque config par défaut reste toujours rechargeable (Réglages > Défaut)
   let simIdx = new Map();                                                // dernières lignes connues : clé → { name (texte bleu), val }
   const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   let simFirstRun = true;
   try { const j = JSON.parse(localStorage.getItem(SIM_KEY) || 'null'); if (j) { simFirstRun = false; simCfg.on = !!j.on; simCfg.current = j.current || ''; if (Array.isArray(j.cfgs) && j.cfgs.length) simCfg.cfgs = j.cfgs; sim.checks = j.checks || []; sim.names = j.names || {}; sim.snap = j.snap || {}; } } catch (_) { /* pas de mémoire */ }
   ['A', 'B', 'C'].forEach((id, i) => { if (!simCfg.cfgs.some(c => c.id === id)) simCfg.cfgs.splice(i, 0, { id, name: 'Config ' + id, items: [] }); });
+  simCfg.cfgs.forEach(c => { if (['A', 'B', 'C'].includes(c.id)) c.name = 'Config ' + c.id; });      // le nom des configurations par défaut n'est pas modifiable
   if (simFirstRun) {      // premier lancement : la Config A par défaut est chargée (les valeurs s'affichent dès que le bouton vert est activé)
-    const a = simCfg.cfgs.find(c => c.id === 'A'); a.items = defaultCfgA(); simCfg.current = 'A';
+    const a = simCfg.cfgs.find(c => c.id === 'A'); ['A', 'B', 'C'].forEach(id => { simCfg.cfgs.find(c => c.id === id).items = defaultCfg(id); }); simCfg.current = 'A';
     a.items.forEach(i => { sim.checks.push(i.sk); if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = { ...i.snap }; });
   }      // Config A, B, C existent toujours : une mémoire où l'une manque (supprimée avant) la retrouve, vide
   const simSave = () => { try { localStorage.setItem(SIM_KEY, JSON.stringify({ on: simCfg.on, current: simCfg.current, cfgs: simCfg.cfgs, checks: sim.checks, names: sim.names, snap: sim.snap })); } catch (_) { /* stockage indisponible */ } };
@@ -1229,7 +1236,7 @@
         const a = b.dataset.act, c = cfgOf(simCfg.current);
         if (a === 'add') openSimModal('edit', null);
         else if (a === 'edit') openSimModal('edit', (c || simCfg.cfgs[0]).id);      // panneau des configurations : par défaut la config active
-        else if (a === 'sync' && c && cfgDirty(c)) { c.items = fromCurrent(); simSave(); renderSimHead(); }
+        else if (a === 'sync' && c && cfgDirty(c)) { const apply = () => { c.items = fromCurrent(); simSave(); renderSimHead(); }; if (FIXED.includes(c.id)) warnDefault(apply); else apply(); }
         else if (a === 'del' && c && !FIXED.includes(c.id)) {
           if (hdrArm === 'del') { clearTimeout(hdrArmT); hdrArm = ''; simCfg.cfgs = simCfg.cfgs.filter(x => x.id !== c.id); simCfg.current = ''; simChanged(); } else hdrFlash('del', 3000);
         }
@@ -1239,6 +1246,18 @@
   }
   /* ---- petite fenêtre (avant-plan, fond flouté) ---- */
   let modal = null, delConfirm = null;
+  /* Config par défaut (A, B, C) : avant d'enregistrer une modification de son contenu, une fenêtre d'avertissement demande de confirmer */
+  function warnDefault(go, no) {
+    const old = $('defWarn'); if (old) old.remove();
+    const w = document.createElement('div'); w.id = 'defWarn';
+    w.innerHTML = '<div class="dwBox" role="alertdialog" aria-modal="true"><p>Vous vous apprêtez à modifier une configuration par défaut</p><div class="dwBtns"><button type="button" class="hbtn" data-w="no">annuler</button><button type="button" class="hbtn primary" data-w="yes">confirmer</button></div></div>';
+    document.body.append(w);
+    const end = () => { w.remove(); document.removeEventListener('keydown', key, true); };
+    const key = e => { if (e.key === 'Escape') { e.stopPropagation(); end(); if (no) no(); } };
+    document.addEventListener('keydown', key, true);
+    w.onclick = e => { const b = e.target.closest('[data-w]'); if (!b && e.target !== w) return; end(); if (b && b.dataset.w === 'yes') go(); else if (no) no(); };
+    const y = w.querySelector('[data-w=yes]'); if (y) y.focus();
+  }
   function closeSimModal() { const m = $('simModal'); if (m) m.remove(); modal = null; delConfirm = null; }
   function openSimModal(view, id, restore) {
     closeSimModal(); simBackHide();
@@ -1270,7 +1289,7 @@
     const opt = c => {
       if (c.id !== modal.id) return `<div class="smCfgOpt${ld(c.id)}" role="button" tabindex="0" data-a="cfgpick" data-id="${esc(c.id)}"><span>${esc(c.name)}</span></div>`;
       if (modal.renaming) return `<div class="smCfgOpt on${ld(c.id)}"><input class="smCfgIn" data-f="name" maxlength="30" value="${esc(modal.name)}" aria-label="Nom de la configuration" placeholder="nom de la configuration"></div>`;
-      return `<div class="smCfgOpt on${ld(c.id)}" role="button" tabindex="0" data-a="cfgpick" data-id="${esc(c.id)}"><span>${esc(nm)}</span><i class="smCfgEd" role="button" tabindex="0" data-a="cfgren" aria-label="Modifier le nom">${ic('edit')}</i></div>`;      // stylo : modifier le nom de la configuration affichée
+      return `<div class="smCfgOpt on${ld(c.id)}" role="button" tabindex="0" data-a="cfgpick" data-id="${esc(c.id)}"><span>${esc(nm)}</span>${FIXED.includes(c.id) ? '' : `<i class="smCfgEd" role="button" tabindex="0" data-a="cfgren" aria-label="Modifier le nom">${ic('edit')}</i>`}</div>`;      // stylo : modifier le nom de la configuration affichée
     };
     return `<div class="smCfgDd"><button type="button" class="smCfgBtn${ld(modal.id)}" data-a="cfgmenu" aria-label="Choisir une configuration"><span>${esc(nm)}</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><div class="smCfgList"${modal.menuOpen ? '' : ' hidden'}>${simCfg.cfgs.map(opt).join('')}</div></div>`;
   }
@@ -1415,7 +1434,7 @@
     const a = b.dataset.a, id = b.dataset.id;
     if (a === 'close') closeSimModal();
     else if (a === 'cfgmenu') { modal.menuOpen = !modal.menuOpen; const l = b.nextElementSibling; if (l) l.hidden = !modal.menuOpen; }
-    else if (a === 'cfgren') { modal.nameBefore = modal.name; modal.renaming = true; modal.menuOpen = true; cfgMenuRefresh(true); }
+    else if (a === 'cfgren' && !FIXED.includes(modal.id)) { modal.nameBefore = modal.name; modal.renaming = true; modal.menuOpen = true; cfgMenuRefresh(true); }
     else if (a === 'cfgpick') { if (id !== modal.id) { applyCfg(id); openSimModal('edit', id); } else { modal.menuOpen = false; cfgMenuRefresh(); } }      // choisir une configuration la charge (comme le menu de l'en-tête) : elle devient la config active, en vert ; les modifications non appliquées de la précédente ne sont pas gardées
     else if (a === 'new') openSimModal('edit', null);
     else if (a === 'edit') openSimModal('edit', id);
@@ -1429,33 +1448,75 @@
     else if (a === 'redo') { if (modal.fut.length) { modal.hist.push(smSnap()); smRestore(modal.fut.pop()); } }
     else if (a === 'save') {
       const nm = (modal.name || '').trim(); if (!nm) { const i = document.querySelector('#simModal .smName'); if (i) { i.classList.add('bad'); i.focus(); } return; }
-      if (modal.saving) return; modal.saving = true; const sb = document.querySelector('#simModal button[data-a=save]'); if (sb) sb.classList.add('saving');      // le bouton cesse de clignoter : on le voit 200 ms, puis la fenêtre se ferme en fondu (1000 ms)
-      setTimeout(() => { const ov = $('simModal'); if (!ov || !modal) return; ov.classList.add('fading'); setTimeout(() => { if (modal) smSave(nm); }, 1000); }, 200);
+      if (modal.saving) return;
+      const go = () => {
+        if (!modal || modal.saving) return; modal.saving = true; const sb = document.querySelector('#simModal button[data-a=save]'); if (sb) sb.classList.add('saving');      // le bouton cesse de clignoter : on le voit 200 ms, puis la fenêtre se ferme en fondu (1000 ms)
+        setTimeout(() => { const ov = $('simModal'); if (!ov || !modal) return; ov.classList.add('fading'); setTimeout(() => { if (modal) smSave(nm); }, 1000); }, 200);
+      };
+      if (modal.id && FIXED.includes(modal.id)) warnDefault(go); else go();
     }
   }
   function smSave(nm) {      // enregistre (après le fondu), ferme la fenêtre et applique
     {
       const live = k => modal.id && modal.id === simCfg.current && sim.checks.includes(k) && sim.snap[k];      // config active : la copie en direct de la ligne est la plus récente (celle de la fenêtre date de son ouverture)
       const items = modal.items.map(i => ({ sk: i.sk, label: i.label, name: (i.name || '').trim(), snap: live(i.sk) ? { ...sim.snap[i.sk] } : i.snap }));
-      if (modal.id) { const c = cfgOf(modal.id); c.name = nm; c.items = items; if (simCfg.current === c.id) { sim.checks = items.map(i => i.sk); sim.names = {}; items.forEach(i => { if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = i.snap; }); } closeSimModal(); simChanged(); }
+      if (modal.id) { const c = cfgOf(modal.id); c.name = FIXED.includes(c.id) ? 'Config ' + c.id : nm; c.items = items; if (simCfg.current === c.id) { sim.checks = items.map(i => i.sk); sim.names = {}; items.forEach(i => { if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = i.snap; }); } closeSimModal(); simChanged(); }
       else { const c = { id: 'c' + Date.now().toString(36), name: nm, items }; simCfg.cfgs.push(c); closeSimModal(); applyCfg(c.id); }
     }
   }
   /* ---- page Réglages : liste des configurations ---- */
-  let resetArm = 0;      // « Rétablir la Config A par défaut » : demande une confirmation (deuxième appui dans les 4 s)
+  /* import / export des configurations (fenêtre commune io.js, fichier .json) */
+  const nVal = n => `${n} valeur${n > 1 ? 's' : ''}`;
+  function cfgIoSpec() {
+    return {
+      title: 'Configurations : importer / exporter', noun: ['configuration', 'configurations'], fem: true, file: 'configurations-vp',
+      list: () => simCfg.cfgs.map(c => ({ id: c.id, label: c.name, sub: nVal(c.items.length) + (FIXED.includes(c.id) ? ' · par défaut' : '') })),
+      presets: [{ id: 'all', label: 'Toutes les configurations actuelles', ids: () => simCfg.cfgs.map(c => c.id) },
+        { id: 'def', label: 'Seulement les configurations par défaut (A, B, C)', ids: () => FIXED.filter(id => cfgOf(id)) }],
+      build: ids => ({ app: 'VP', type: 'configs', version: 1, exportedAt: new Date().toISOString(),
+        configs: simCfg.cfgs.filter(c => ids.includes(c.id)).map(c => ({ id: c.id, name: c.name, items: JSON.parse(JSON.stringify(c.items)) })) }),
+      parse(text) {
+        let j; try { j = JSON.parse(text); } catch (e) { throw new Error('Ce fichier n\'est pas un fichier JSON lisible.'); }
+        if (!j || !Array.isArray(j.configs)) throw new Error('Ce fichier ne contient pas de configurations (fichier « configurations » exporté par VP attendu).');
+        const list = j.configs.filter(c => c && typeof c.id === 'string' && c.id && Array.isArray(c.items)).map(c => ({
+          id: c.id, name: FIXED.includes(c.id) ? 'Config ' + c.id : String(c.name || '').trim() || 'Configuration',
+          items: c.items.filter(i => i && typeof i.sk === 'string').map(i => ({ sk: i.sk, label: String(i.label ?? ''), name: String(i.name ?? ''), snap: i.snap && typeof i.snap === 'object' ? i.snap : undefined })) }));
+        if (!list.length) throw new Error('Aucune configuration valide dans ce fichier.');
+        return {
+          entries: list.map(c => ({ key: c.id, label: c.name, sub: nVal(c.items.length) + (FIXED.includes(c.id) ? ' · par défaut' : '') + (cfgOf(c.id) ? ' · remplace la configuration actuelle' : ' · nouvelle') })),
+          async apply(keys) {
+            const sel = list.filter(c => keys.includes(c.id));
+            if (sel.some(c => FIXED.includes(c.id) && cfgOf(c.id))) { const ok = await new Promise(res => warnDefault(() => res(true), () => res(false))); if (!ok) return 0; }      // une configuration par défaut va être remplacée
+            let reload = false;
+            sel.forEach(c => { const o = cfgOf(c.id); if (o) { o.name = c.name; o.items = c.items; if (simCfg.current === c.id) reload = true; } else simCfg.cfgs.push(c); });
+            if (reload) applyCfg(simCfg.current); else simChanged();
+            return sel.length;
+          },
+        };
+      },
+    };
+  }
+  /* Préférences : parcs de vidéo-projecteurs et d'écrans (import / export) */
+  function renderIoBoxes() {
+    const mk = (id, title, open) => { const b = $(id); if (!b) return; b.innerHTML = `<h3>${title}</h3><button class="hbtn ioBtn" type="button">Importer/Exporter</button>`; b.querySelector('button').onclick = open; };
+    mk('parcBox', 'Parc de vidéo-projecteurs', () => window.Parc.openIO());
+    mk('screenBox', 'Parc écrans', () => window.Screens.openIO());
+  }
+  let defArm = { id: '', t: 0 };      // bouton « Défaut » : un deuxième appui (dans les 4 s) confirme
   function renderSimSettings() {
     const box = $('simCfgBox'); if (!box) return;
     box.onclick = e => {
       const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, id = b.dataset.id;
-      if (a === 'resetA') {
-        if (resetArm) { clearTimeout(resetArm); resetArm = 0; const c = cfgOf('A'); c.name = 'Config A'; c.items = defaultCfgA(); if (simCfg.current === 'A') applyCfg('A'); else simChanged(); }
-        else { resetArm = setTimeout(() => { resetArm = 0; renderSimSettings(); }, 4000); renderSimSettings(); }
+      if (a === 'io') { window.VPIO.open(cfgIoSpec()); return; }
+      if (a === 'default' && FIXED.includes(id)) {
+        if (defArm.id === id) { clearTimeout(defArm.t); defArm = { id: '', t: 0 }; const c = cfgOf(id); c.name = 'Config ' + id; c.items = defaultCfg(id); if (simCfg.current === id) applyCfg(id); else simChanged(); }
+        else { clearTimeout(defArm.t); defArm = { id, t: setTimeout(() => { defArm = { id: '', t: 0 }; renderSimSettings(); }, 4000) }; renderSimSettings(); }
         return;
       }
       if (a === 'new') openSimModal('edit', null); else if (a === 'edit') openSimModal('edit', id);
       else if (a === 'del' && !FIXED.includes(id)) { if (delConfirm === id) { simCfg.cfgs = simCfg.cfgs.filter(c => c.id !== id); if (simCfg.current === id) simCfg.current = ''; delConfirm = null; simChanged(); } else { delConfirm = id; renderSimSettings(); } }
     };
-    box.innerHTML = `<h3>Valeurs dans les simulations</h3><p class="sub">Configurations mémorisées (une sélection de lignes de calcul avec leurs noms). Elles se choisissent en haut de ∑ Calculs.</p>${simCfg.cfgs.map(c => `<div class="smRow"><span class="smNm">${esc(c.name)}<small>${c.items.length} valeur${c.items.length > 1 ? 's' : ''}</small></span><button class="smIc" data-a="edit" data-id="${esc(c.id)}" title="Modifier" aria-label="Modifier">${ic('edit')}</button>${FIXED.includes(c.id) ? '' : `<button class="smIc${delConfirm === c.id ? ' danger' : ''}" data-a="del" data-id="${esc(c.id)}" title="${delConfirm === c.id ? 'Confirmer la suppression' : 'Supprimer'}" aria-label="Supprimer">${ic(delConfirm === c.id ? 'ok' : 'del')}</button>`}</div>`).join('')}<div class="smFoot"><button class="smIc" data-a="new" title="Ajouter une config" aria-label="Ajouter une config">${ic('add')}</button></div><div class="smReset"><button class="hbtn${resetArm ? ' danger' : ''}" data-a="resetA">${resetArm ? 'Confirmer : écraser la Config A (appuyer de nouveau)' : 'Rétablir la Config A par défaut'}</button><p class="sub">Revient au calibrage d’origine de la Config A (valeurs et noms), celui de tout nouvel utilisateur. Les autres configurations ne changent pas.</p></div>`;
+    box.innerHTML = `<h3>Configurations mémorisées</h3><p class="sub subS">sélection de lignes de calcul pour les simulations</p>${simCfg.cfgs.map(c => `<div class="smRow"><span class="smNm">${esc(c.name)}<small>${c.items.length} valeur${c.items.length > 1 ? 's' : ''}</small></span><button class="smIc" data-a="edit" data-id="${esc(c.id)}" title="Modifier" aria-label="Modifier">${ic('edit')}</button>${FIXED.includes(c.id) ? `<button class="smDef${defArm.id === c.id ? ' danger' : ''}" data-a="default" data-id="${esc(c.id)}" title="Revenir à la configuration par défaut">${defArm.id === c.id ? 'Confirmer' : 'Défaut'}</button>` : `<button class="smIc${delConfirm === c.id ? ' danger' : ''}" data-a="del" data-id="${esc(c.id)}" title="${delConfirm === c.id ? 'Confirmer la suppression' : 'Supprimer'}" aria-label="Supprimer">${ic(delConfirm === c.id ? 'ok' : 'del')}</button>`}</div>`).join('')}<div class="smFoot"><button class="smIc" data-a="new" title="Ajouter une config" aria-label="Ajouter une config">${ic('add')}</button></div><button class="hbtn ioBtn" data-a="io">Importer/Exporter un fichier</button>`;
   }
   const dfl = { quad: { full: false, flt: ['', ''] }, scr: { full: false, flt: ['', ''] } };      // Faisceau, Écran : « calculs plus exhaustifs » et deux filtres propres à chaque onglet
   const fmtEdit = v => String(+v.toFixed(4)).replace('.', ',');                // coordonnée proposée à la modification
@@ -2278,7 +2339,7 @@
   }
 
   /* ---------- Navigation ---------- */
-  const titles = { calc: 'Calcul faisceau', vp: 'Projecteurs', ecran: 'Écrans', proj: 'Projets', set: 'Réglages' };
+  const titles = { calc: 'Calcul faisceau', vp: 'Vidéo-projecteurs', ecran: 'Écrans', set: 'Préférences' };
   $('nav').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
     document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
@@ -2294,7 +2355,7 @@
 
   buildParams(); buildLockPills(); syncRot();
   $('title').style.display = 'none';                 // page Calcul au démarrage
-  attachDrag('svgSide', ['y', 'z']); attachDrag('svgTop', ['x', 'y']); renderSimHead(); renderSimSettings(); attachFaceDrag(); attachDisp(); attachDispView('dispSelSide', 'svgSide', false); attachDispView('dispSelTop', 'svgTop', true);
+  attachDrag('svgSide', ['y', 'z']); attachDrag('svgTop', ['x', 'y']); renderSimHead(); renderSimSettings(); renderIoBoxes(); attachFaceDrag(); attachDisp(); attachDispView('dispSelSide', 'svgSide', false); attachDispView('dispSelTop', 'svgTop', true);
   document.querySelectorAll('.expand').forEach(b => b.onclick = () => { const card = b.closest('.card'); if ($('p-calc').classList.contains('cfg')) { $('cfgBtn').click(); toggleFull(card, true); backToCompact = true; return; } toggleFull(card); });      // en vue compacte : on en sort, puis la vue passe en plein écran
   $('viz').addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) { locks[c.dataset.k] = !locks[c.dataset.k]; render(); } });
   addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.card.full').forEach(c => toggleFull(c, false)); });
