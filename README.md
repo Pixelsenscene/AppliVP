@@ -4,7 +4,7 @@ Application web (future PWA) pour placer et choisir des vidéoprojecteurs face �
 (avec déformation en trapèze), pixels utiles / perdus, propositions de placement automatiques.
 Pensée d'abord pour l'**iPad** (paysage et portrait), utilisable aussi sur Mac et iPhone.
 
-> Version de travail : `1.1.11` (source unique : `version.js`). Les modules Vidéo-projecteurs et Écrans (bibliothèques) sont en place ; le menu Projets a été retiré, ses fonctions (import / export de fichiers) sont dans Préférences.
+> Version de travail : `1.1.12` (source unique : `version.js`). Les modules Vidéo-projecteurs et Écrans (bibliothèques) sont en place ; le menu Projets a été retiré, ses fonctions (import / export de fichiers) sont dans Préférences.
 
 ## Utilisation
 
