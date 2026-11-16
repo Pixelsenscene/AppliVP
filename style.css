@@ -305,6 +305,9 @@ header .toast.show{transform:none}
 .warnBox div{display:flex;gap:8px;font-size:13.5px;line-height:1.35}
 .warnBox div::before{content:"⚠";color:var(--warn);flex:none}
 .warnBox small{color:var(--mut);margin-left:auto;white-space:nowrap;padding-left:8px}
+.pre{display:flex;justify-content:center;gap:8px;margin-top:6px}
+.pre button{min-width:52px;height:22px;padding:0 10px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);font-size:12px;font-variant-numeric:tabular-nums;color:var(--tc,inherit)}
+.pre button:active{border-color:var(--tc,var(--acc))}
 .rw{grid-column:1/-1;color:var(--warn);font-size:12.5px;line-height:1.35;margin-top:2px}
 .rw:empty{display:none}
 .sub.warn{color:var(--warn)}
@@ -1333,3 +1336,14 @@ nav .navVer{pointer-events:auto;cursor:pointer}
 .simCfgBox h3{background:rgba(255,255,255,.06);border-radius:8px;padding:9px 14px;margin:0 0 10px}
 .simCfgBox .subS{margin:0 0 14px;padding:0 4px}
 .simCfgBox .smRow{padding:10px 4px}
+
+/* Écran déplacé : choix de la vue de face (à droite du titre) */
+.faceRef{display:inline-flex;gap:4px;margin-left:10px;vertical-align:middle;pointer-events:auto;letter-spacing:0;text-transform:none}
+.faceRef[hidden]{display:none}
+.faceRef button{height:20px;padding:0 9px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);color:var(--mut);font-size:11px;font-weight:600}
+.faceRef button.on{color:#fff;border-color:#ff6b6b;background:color-mix(in srgb,#ff6b6b 22%,var(--panel2))}
+.faceRef button[data-v=screen].on{border-color:#2f6fd0;background:color-mix(in srgb,#2f6fd0 55%,var(--panel2))}
+
+/* Déplacer l'écran : curseurs rouges par défaut ; le dernier curseur touché (après relâchement) passe au rouge orangé ; pendant le geste, la surbrillance habituelle */
+.row.scrRow:not(.hot):not(.recent) input[type=range]{accent-color:#ff6b6b}
+.row.scrRow.recent:not(.hot) input[type=range]{accent-color:#ff7a1a}

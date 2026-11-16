@@ -20,11 +20,12 @@
      verrouillé. Les changements sont repérés par comparaison des valeurs à chaque rendu : curseur, boutons ± , saisie, glisser dans les vues, Auto, liste d'écrans.
      Un geste = du premier doigt posé au dernier relevé : tous les paramètres modifiés pendant le geste (VP glissé en x et y, deux doigts…) restent jaunes ensemble. */
   const TOUCH_KEYS = ['sw', 'sh', 'y', 'x', 'z', 'zoom'];
-  const ADV_KEYS = ['sx', 'sy', 'oy', 'pan', 'tilt', 'roll'];     // curseurs de l'optique avancée : même principe, couleur de leur icône, pas de cadenas
+  const ADV_KEYS = ['sx', 'sy', 'oy', 'pan', 'tilt', 'roll', 'sdx', 'sdy', 'sdz', 'syaw', 'spitch', 'sroll'];     // curseurs de l'optique avancée : même principe, couleur de leur icône, pas de cadenas
   const down = new Set();                                          // pointeurs enfoncés
   let touched = new Set(), hot = false, gesture = false, prevS = null, hotT = 0, advToggled = false;
   function trackChanges() {
-    const cur = { vp: S.vp, sx: S.sx * 100, sy: S.sy * 100, oy: S.oy * 100, pan: S.rot ? S.rot.pan : 0, tilt: S.rot ? S.rot.tilt : 0, roll: S.rot ? S.rot.roll : 0 };
+    const cur = { vp: S.vp, sx: S.sx * 100, sy: S.sy * 100, oy: S.oy * 100, pan: S.rot ? S.rot.pan : 0, tilt: S.rot ? S.rot.tilt : 0, roll: S.rot ? S.rot.roll : 0,
+      sdx: S.scr ? S.scr.dx : 0, sdy: S.scr ? S.scr.dy : 0, sdz: S.scr ? S.scr.dz : 0, syaw: S.scr ? S.scr.yaw : 0, spitch: S.scr ? S.scr.pitch : 0, sroll: S.scr ? S.scr.roll : 0 };
     TOUCH_KEYS.forEach(k => cur[k] = S[k]);
     if (prevS) {
       const diff = k => Math.abs(cur[k] - prevS[k]) > 1e-9;
@@ -149,6 +150,8 @@
         <div class="rt"><label>${p.label}${k === 'zoom' ? ' · ratio <b id="o_ratio"></b>' : ''}</label><input class="val" id="o_${k}" data-k="${k}" type="text" inputmode="${k === 'x' ? 'text' : 'decimal'}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
         <div class="ctl"><button class="lk" data-k="${k}"></button><button data-s="${k}" data-d="-1">−</button><input type="range" id="${k}" min="${p.min}" max="${p.max}" step="${p.step}"><button data-s="${k}" data-d="1">+</button></div></div>`);
       }
+      if (g.id === 'ecran') card.insertAdjacentHTML('beforeend', `<div class="advItem scrItem"><div class="opt"><label><input type="checkbox" id="adv_scr"><span>Déplacer l’écran</span></label><button class="info" data-h="scr" aria-label="Aide">i</button></div>
+        <div class="grp hidden" id="g_scr">${ADV_ROWS.filter(r => r.grp === 'scr').map(advRowHtml).join('')}</div></div>`);
       if (!OPEN[g.id]) card.classList.add('collapsed');
       /* bloc réduit / déployé ; le chemin de l'événement est lu tel quel car le bouton cadenas redessine son icône pendant le clic (la cible n'est alors plus dans la page) */
       card.querySelector('h2').onclick = e => {
@@ -188,10 +191,10 @@
       };
     });
     // un appui sur le libellé recentre le paramètre : recul = milieu du curseur, hauteur = centre de l'écran, centrage = dans l'axe
-    const JUMP = { y: () => (PARAMS.y.min + PARAMS.y.max) / 2, z: () => S.sh / 2, x: () => 0 };
+    const JUMP = { y: () => (PARAMS.y.min + PARAMS.y.max) / 2, z: () => S.sh / 2 + (S.scr ? S.scr.dz : 0), x: () => S.scr ? S.scr.dx : 0, zoom: () => 50 };
     Object.entries(JUMP).forEach(([k, fn]) => {
       const lab = box.querySelector(`.row[data-k=${k}] label`);
-      lab.classList.add('jump'); lab.title = { y: 'Milieu de la course', z: "Centré sur l'écran", x: "Dans l'axe de l'écran" }[k];
+      lab.classList.add('jump'); lab.title = { y: 'Milieu de la course', z: "Centré sur l'écran", x: "Dans l'axe de l'écran", zoom: 'Revenir à 50 %' }[k];
       lab.onclick = () => setParam(k, fn());
     });
     box.querySelectorAll('.lk[data-k]').forEach(b => b.onclick = () => { locks[b.dataset.k] = !locks[b.dataset.k]; render(); });
@@ -236,13 +239,15 @@
 
   /* ---------- Optique avancée : A lens shift · B translation · C rotation · throw offset ---------- */
   const adv = { ref: 'auto', zoom: false, lens: false, trans: false, rot: false, src: 'std', off: false, offV: 0, offEdited: false, drag: null, _vp: null };
+  let scrKeep = null, faceView = 'room';                              // scrKeep : réglages de l'écran déplacé, gardés quand on décoche · faceView : vue de face « room » (Vue salle, par défaut) ou « screen » (Vue écran)
   const LENS_FREE = { v: 2, h: 1 };                                   // course des curseurs en mode libre (fraction de l'image)
   const lensRange = ax => { const L = G.lensLimits(vpOf(), adv.src); return L ? L[ax] : [-LENS_FREE[ax], LENS_FREE[ax]]; };
   const HELP = {
     lens: "<b>Lens shift (décalage optique)</b> : l'objectif glisse dans le projecteur. L'image se déplace sur l'écran <u>sans se déformer</u>, le VP restant droit. La plage dépend du modèle ; elle s'exprime en % de la hauteur (vertical) ou de la largeur (horizontal) de l'image.",
     src: "<b>Constructeur</b> : plage donnée par la fiche du projecteur (si renseignée).<br><b>Standard</b> : moyenne courante, ±30 % en vertical et ±10 % en horizontal.<br><b>Libre</b> : aucune limite, pour tester un cas hors fiche.",
     trans: "<b>Translation du VP</b> : on déplace le projecteur (x, y, z) sans le faire pivoter. Son axe reste fixe : l'image suit le VP et le faisceau se <u>désaxe</u> de l'écran. Cocher cette case fige la visée automatique.",
-    rot: "<b>Rotation du VP</b> : <i>pan</i> = gauche / droite, <i>tilt</i> = haut / bas, <i>roll</i> = autour de l'axe optique. L'image se déplace mais se <u>déforme en trapèze</u> (keystone). Les angles partent de la visée actuelle.",
+    rot: "<b>Rotation du VP</b> : <i>pan</i> = gauche / droite, <i>tilt</i> = haut / bas, <i>roll</i> = autour de l'axe optique, sur 360° (−180° à +180°, avec les raccourcis −90° / +90° pour un VP monté sur le côté). L'image se déplace mais se <u>déforme en trapèze</u> (keystone). Les angles partent de la visée actuelle.",
+    scr: "<b>Déplacer l'écran</b> : décale l'écran (x, y, z) et l'oriente dans les 3 axes, à partir de sa position droite (tout à 0). <i>Lacet</i> : + = la face regarde vers la droite ; <i>tangage</i> : + = vers le haut ; <i>roulis</i> : + = le bord droit monte. L'écran tourne autour de son centre. Les vues de côté et de dessus le montrent tel quel ; la vue de face propose <u>Vue salle</u> (écran vu de face dans la salle) ou <u>Vue écran</u> (écran à plat, comme avant).",
     off: "<b>Throw offset</b> : décalage vertical <u>fixe</u> de l'image par rapport à l'axe de l'objectif, propre à chaque modèle. À +60 %, le bas de l'image est à 10 % de sa hauteur au-dessus de l'axe (VP posé sur une table). Il s'ajoute au lens shift ; en plafonnier retourné, il est négatif.",
   };
   const ADV_ROWS = [
@@ -251,12 +256,18 @@
     { id: 'oy', grp: 'off', label: 'Décalage vertical', unit: '%', dp: 0, min: -100, max: 150, step: 1, hard: 300, get: () => adv.offV * 100, set: v => { adv.offV = v / 100; adv.offEdited = true; } },
     { id: 'pan', grp: 'rot', label: 'Pan ↔ gauche / droite', unit: '°', dp: 1, min: -45, max: 45, step: 0.5, hard: 89, get: () => S.rot ? S.rot.pan : 0, set: v => S.rot.pan = v },
     { id: 'tilt', grp: 'rot', label: 'Tilt ↕ haut / bas', unit: '°', dp: 1, min: -45, max: 45, step: 0.5, hard: 89, get: () => S.rot ? S.rot.tilt : 0, set: v => S.rot.tilt = v },
-    { id: 'roll', grp: 'rot', label: 'Roll ⟳ autour de l\'axe', unit: '°', dp: 1, min: -45, max: 45, step: 0.5, hard: 180, get: () => S.rot ? S.rot.roll : 0, set: v => S.rot.roll = v },
+    { id: 'roll', grp: 'rot', label: 'Roll ⟳ autour de l\'axe', unit: '°', dp: 1, min: -180, max: 180, step: 0.5, hard: 180, presets: [-90, 90], get: () => S.rot ? S.rot.roll : 0, set: v => S.rot.roll = v },
+    { id: 'sdx', grp: 'scr', label: 'Décalage x ↔ gauche / droite', unit: 'm', dp: 2, min: -10, max: 10, step: 0.05, hard: 50, get: () => S.scr ? S.scr.dx : 0, set: v => S.scr.dx = v },
+    { id: 'sdy', grp: 'scr', label: 'Décalage y ⇅ vers / loin du public', unit: 'm', dp: 2, min: -10, max: 10, step: 0.05, hard: 50, get: () => S.scr ? S.scr.dy : 0, set: v => S.scr.dy = v },
+    { id: 'sdz', grp: 'scr', label: 'Décalage z ↕ haut / bas', unit: 'm', dp: 2, min: -5, max: 5, step: 0.05, hard: 50, get: () => S.scr ? S.scr.dz : 0, set: v => S.scr.dz = v },
+    { id: 'syaw', grp: 'scr', label: 'Lacet ↔ gauche / droite', unit: '°', dp: 1, min: -180, max: 180, step: 0.5, hard: 180, get: () => S.scr ? S.scr.yaw : 0, set: v => S.scr.yaw = v },
+    { id: 'spitch', grp: 'scr', label: 'Tangage ↕ haut / bas', unit: '°', dp: 1, min: -90, max: 90, step: 0.5, hard: 90, get: () => S.scr ? S.scr.pitch : 0, set: v => S.scr.pitch = v },
+    { id: 'sroll', grp: 'scr', label: 'Roulis ⟳ dans son plan', unit: '°', dp: 1, min: -180, max: 180, step: 0.5, hard: 180, get: () => S.scr ? S.scr.roll : 0, set: v => S.scr.roll = v },
   ];
   const advSlider = r => r.lens ? lensRange(r.lens).map(x => x * 100) : [r.min, r.max];
-  const ADV_COL = { lens: '#0fbcd6', off: '#0fbcd6', rot: '#d6620f' };      // couleurs des icônes (lens shift, rotation) ; le throw offset prolonge le lens shift
-  const advRowHtml = r => `<div class="row" data-a="${r.id}" style="--tc:${ADV_COL[r.grp]}"><div class="rt"><label>${r.label}</label><input class="val" id="a_o_${r.id}" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
-  <div class="ctl"><button data-a="${r.id}" data-d="-1">−</button><input type="range" id="a_${r.id}" step="${r.step}"><button data-a="${r.id}" data-d="1">+</button></div><div class="rw" id="a_w_${r.id}"></div></div>`;
+  const ADV_COL = { lens: '#0fbcd6', off: '#0fbcd6', rot: '#d6620f', scr: '#ff6b6b' };      // couleurs des icônes (lens shift, rotation) ; le throw offset prolonge le lens shift
+  const advRowHtml = r => `<div class="row${r.grp === 'scr' ? ' scrRow' : ''}" data-a="${r.id}" style="--tc:${ADV_COL[r.grp]}"><div class="rt"><label>${r.label}</label><input class="val" id="a_o_${r.id}" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+  <div class="ctl"><button data-a="${r.id}" data-d="-1">−</button><input type="range" id="a_${r.id}" step="${r.step}"><button data-a="${r.id}" data-d="1">+</button></div>${r.presets ? `<div class="pre">${r.presets.map(p => `<button type="button" data-a="${r.id}" data-p="${p}">${p > 0 ? '+' : '−'}${Math.abs(p)}°</button>`).join('')}</div>` : ''}<div class="rw" id="a_w_${r.id}"></div></div>`;
   const AIM_ICON = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>';
   const optHtml = (id, tag, name, help) => `<div class="opt"><label><input type="checkbox" id="adv_${id}"><span>${name}</span></label>${id === 'rot' ? `<button class="aimMini" data-t="Viser le centre de l’écran" aria-label="Viser le centre de l’écran">${AIM_ICON}</button>` : ''}<button class="info" data-h="${help}" aria-label="Aide">i</button></div>`;
 
@@ -284,15 +295,31 @@
     chk('lens', on => setOpt('lens', on));
     chk('trans', on => setOpt('trans', on));
     chk('rot', on => setOpt('rot', on));
+    chk('scr', on => { if (on) S.scr = scrKeep || { dx: 0, dy: 0, dz: 0, yaw: 0, pitch: 0, roll: 0 }; else { scrKeep = S.scr; S.scr = null; } Object.assign(fv, { mode: 'auto', manual: false }); });
+    $('faceRef').onclick = e => { const b = e.target.closest('button'); if (!b || faceView === b.dataset.v) return; faceView = b.dataset.v; Object.assign(fv, { mode: 'auto', manual: false }); Object.assign(dv.svgSide, { mode: 'auto', manual: false }); Object.assign(dv.svgTop, { mode: 'auto', manual: false }); render(); };
     chk('off', on => { adv.off = on; adv.offEdited = false; adv.offV = on ? G.throwOffsetOf(vpOf()).value : 0; });
     card.querySelectorAll('input[name=lsrc]').forEach(i => i.onchange = () => { advToggled = true; adv.src = i.value; render(); });
     card.querySelector('.aimMini').onclick = () => { advToggled = true; S.aim = null; if (adv.trans || adv.rot) S.rot = G.autoAim(S); render(); };
 
     const byId = id => ADV_ROWS.find(r => r.id === id);
     const apply = (r, v) => { const lim = r.lens && adv.src !== 'free' ? advSlider(r) : [-r.hard, r.hard]; r.set(Math.max(lim[0], Math.min(lim[1], v))); render(); };
-    card.querySelectorAll('input[type=range]').forEach(i => i.oninput = () => apply(byId(i.id.slice(2)), +i.value));
-    card.querySelectorAll('.ctl button').forEach(b => b.onclick = () => { const r = byId(b.dataset.a); apply(r, r.get() + (+b.dataset.d) * r.step); });
-    card.querySelectorAll('.val').forEach(inp => {
+    /* un appui sur le libellé d'un curseur le ramène à sa valeur par défaut : lens shift 0 %, pan / tilt = visée sur le centre de l'écran, roll 0°, throw offset = valeur de la fiche */
+    const DEF = {
+      sx: () => 0, sy: () => 0, roll: () => 0,
+      pan: () => G.autoAim({ ...S, aim: null }).pan, tilt: () => G.autoAim({ ...S, aim: null }).tilt,      // aim: null = centre de l'écran (S.aim suit le réglage manuel)
+      oy: () => G.throwOffsetOf(vpOf()).value * 100,
+      sdx: () => 0, sdy: () => 0, sdz: () => 0, syaw: () => 0, spitch: () => 0, sroll: () => 0,
+    };
+    const DEF_TIP = { sx: 'Revenir à 0 %', sy: 'Revenir à 0 %', roll: 'Revenir à 0°', pan: "Viser le centre de l'écran (pan)", tilt: "Viser le centre de l'écran (tilt)", oy: 'Revenir à la valeur de la fiche', sdx: 'Revenir à 0', sdy: 'Revenir à 0', sdz: 'Revenir à 0', syaw: 'Revenir à 0°', spitch: 'Revenir à 0°', sroll: 'Revenir à 0°' };
+    Object.keys(DEF).forEach(id => {
+      const lab = box.querySelector(`.row[data-a=${id}] label`);
+      lab.classList.add('jump'); lab.title = DEF_TIP[id];
+      lab.onclick = () => { apply(byId(id), DEF[id]()); if (id === 'oy') { adv.offEdited = false; render(); } };
+    });
+    box.querySelectorAll('.row[data-a] input[type=range]').forEach(i => i.oninput = () => apply(byId(i.id.slice(2)), +i.value));
+    card.querySelectorAll('.pre button').forEach(b => b.onclick = () => apply(byId(b.dataset.a), +b.dataset.p));
+    box.querySelectorAll('.row[data-a] .ctl button').forEach(b => b.onclick = () => { const r = byId(b.dataset.a); apply(r, r.get() + (+b.dataset.d) * r.step); });
+    box.querySelectorAll('.row[data-a] .val').forEach(inp => {
       const r = byId(inp.id.slice(4));
       inp.onfocus = () => { inp.value = fm(r.get(), r.dp); setTimeout(() => inp.select(), 0); };
       inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.dataset.cancel = 1; inp.blur(); } };
@@ -347,6 +374,8 @@
   function drawAdv() {
     const v = vpOf(), pct = x => fm(x * 100, 0);
     for (const id of ['lens', 'trans', 'rot', 'off']) { $('adv_' + id).checked = adv[id]; $('g_' + id).classList.toggle('hidden', !adv[id]); }
+    $('adv_scr').checked = !!S.scr; $('g_scr').classList.toggle('hidden', !S.scr);
+    $('faceRef').hidden = !S.scr; $('faceRef').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === faceView));
     document.querySelectorAll('#lensSrc input').forEach(i => {
       const nok = i.value === 'maker' && !G.hasMakerLens(v);
       i.checked = i.value === adv.src; i.disabled = nok; i.nextElementSibling.textContent = nok ? 'Constructeur (non renseigné)' : { maker: 'Constructeur', std: 'Standard', free: 'Libre' }[i.value];
@@ -419,7 +448,7 @@
       const q = ok ? lastR.q : null;
       dragNow = k; render();
       st0 = {
-        m: k, ok, zoom: S.zoom, sx: S.sx, sy: S.sy, x: S.x, z: S.z, rot: S.rot && { ...S.rot }, roll: S.rot ? S.rot.roll || 0 : 0,
+        m: k, ok, zoom: S.zoom, sx: S.sx, sy: S.sy, x: S.x, y: S.y, z: S.z, frame: ok ? lastR.frame : null, T: ok ? [lastR.B.T[0], lastR.B.T[2]] : null, rot: S.rot && { ...S.rot }, roll: S.rot ? S.rot.roll || 0 : 0,
         Wb: q ? (q.sides.AB + q.sides.CD) / 2 : 1, Hb: q ? (q.sides.BC + q.sides.DA) / 2 : 1, dist: ok ? lastR.B.dist : 1
       };
     };
@@ -430,19 +459,36 @@
       moved = true;
       if (!st0.ok || !F) return;
       const g = adv.ref === 'vp' ? -1 : 1;                 // référence VP : la main tient l'écran, qui bouge par rapport au faisceau fixe → effet inverse sur le faisceau
-      const dx = g * px / F.k, dz = -g * py / F.k, cl = (v, [a, b]) => Math.max(a, Math.min(b, v));       // pixels → mètres dans le plan de l'écran
+      const dx = g * px / F.k, dz = -g * py / F.k, cl = (v, [a, b]) => Math.max(a, Math.min(b, v));       // pixels → mètres dans le plan de la vue
+      /* (ds, dt) = déplacement du faisceau dans le plan de l'écran. Écran droit ou Vue écran : c'est (dx, dz).
+         Écran déplacé en Vue salle : le doigt déplace dans le plan x–z de la salle ; on cherche le déplacement dans le plan de l'écran qui s'y projette (même x et z, y libre). */
+      let ds = dx, dt = dz;
+      const fr = st0.frame;
+      if (fr && faceView === 'room') {
+        const n = fr.normal;
+        if (Math.abs(n[1]) < 0.05) { dragMsg('Écran vu de profil : glisser indisponible dans cette vue, utiliser Vue écran ou les curseurs'); return; }
+        const v = [dx, -(n[0] * dx + n[2] * dz) / n[1], dz];
+        ds = v[0] * fr.right[0] + v[1] * fr.right[1] + v[2] * fr.right[2]; dt = v[0] * fr.up[0] + v[1] * fr.up[1] + v[2] * fr.up[2];
+      }
       if (st0.m === 'lens') {
         const lh = adv.src === 'free' ? [-5, 5] : lensRange('h'), lv = adv.src === 'free' ? [-5, 5] : lensRange('v');
-        S.sx = Math.round(cl(st0.sx + dx / st0.Wb, lh) * 200) / 200; S.sy = Math.round(cl(st0.sy + dz / st0.Hb, lv) * 200) / 200;
+        S.sx = Math.round(cl(st0.sx + ds / st0.Wb, lh) * 200) / 200; S.sy = Math.round(cl(st0.sy + dt / st0.Hb, lv) * 200) / 200;
       } else if (st0.m === 'zoom') {                                       // glisser vers la droite = faisceau plus grand (zoom % plus faible)
         if (locks.zoom) { if (Math.abs(px) > 4) lockMsg('zoom'); } else S.zoom = clampP('zoom', Math.round(st0.zoom - px * 0.5));
+      } else if (st0.m === 'trans' && fr) {                                // écran déplacé : le VP glisse parallèlement à l'écran (le faisceau suit exactement le doigt), donc x, y et z peuvent changer
+        const nw = [0, 1, 2].map(i => fr.right[i] * ds + fr.up[i] * dt), lk = [];
+        ['x', 'y', 'z'].forEach((k, i) => { if (!locks[k]) S[k] = clampP(k, Math.round((st0[k] + nw[i]) * 100) / 100); else if (Math.abs(nw[i]) > 0.02) lk.push(k); });
+        if (lk.length) lockMsg(...lk);
       } else if (st0.m === 'trans') {
         const lk = [];
         if (!locks.x) S.x = clampP('x', magnet0(Math.round((st0.x + dx) * 100) / 100, magnetPx(F && F.k))); else if (Math.abs(dx) > 0.02) lk.push('x');
         if (!locks.z) S.z = clampP('z', magnet0(Math.round((st0.z + dz) * 100) / 100, magnetPx(F && F.k))); else if (Math.abs(dz) > 0.02) lk.push('z');
         if (lk.length) lockMsg(...lk);
       } else if (st0.m === 'rot' && S.rot && rollMode) {                   // glisser vers la droite = image qui tourne dans le sens horaire (roll < 0)
-        S.rot.roll = Math.round(cl(st0.roll - px * 0.15, [-45, 45]) * 2) / 2;
+        S.rot.roll = Math.round(cl(st0.roll - px * 0.3, [-180, 180]) * 2) / 2;
+      } else if (st0.m === 'rot' && S.rot && fr) {                         // écran déplacé : on vise le point de l'écran sous le doigt
+        const a = G.autoAim({ ...S, aim: [st0.T[0] + ds, st0.T[1] + dt] });
+        S.rot.pan = Math.round(cl(a.pan, [-89, 89]) * 10) / 10; S.rot.tilt = Math.round(cl(a.tilt, [-89, 89]) * 10) / 10;
       } else if (st0.m === 'rot' && S.rot) {
         S.rot.pan = Math.round(cl(st0.rot.pan + deg(Math.atan2(dx, st0.dist)), [-89, 89]) * 10) / 10;
         S.rot.tilt = Math.round(cl(st0.rot.tilt + deg(Math.atan2(dz, st0.dist)), [-89, 89]) * 10) / 10;
@@ -501,10 +547,11 @@
     else F = frame(svg, ...b, pad, flipY, mTop, mBot);
     svg._F = F; return F;
   }
+  const GRID = '#1f262e', GRID_ROOM = '#4d282f', GRID_SCR = '#1d3552';      // grille : neutre · légèrement rouge (Vue salle) · légèrement bleue (Vue écran), quand « Déplacer l'écran » est actif
   function gridLines(svg, F, minx, maxx, miny, maxy) {
-    const step = (maxx - minx) > 14 || (maxy - miny) > 14 ? 5 : 1;
-    for (let x = Math.ceil(minx / step) * step; x <= maxx; x += step) svg.append(el('line', { x1: F.X(x), x2: F.X(x), y1: F.Y(miny), y2: F.Y(maxy), stroke: '#1f262e' }));
-    for (let y = Math.ceil(miny / step) * step; y <= maxy; y += step) svg.append(el('line', { y1: F.Y(y), y2: F.Y(y), x1: F.X(minx), x2: F.X(maxx), stroke: '#1f262e' }));
+    const step = (maxx - minx) > 14 || (maxy - miny) > 14 ? 5 : 1, gc = S.scr ? (faceView === 'room' ? GRID_ROOM : GRID_SCR) : GRID;
+    for (let x = Math.ceil(minx / step) * step; x <= maxx; x += step) svg.append(el('line', { x1: F.X(x), x2: F.X(x), y1: F.Y(miny), y2: F.Y(maxy), stroke: gc }));
+    for (let y = Math.ceil(miny / step) * step; y <= maxy; y += step) svg.append(el('line', { y1: F.Y(y), y2: F.Y(y), x1: F.X(minx), x2: F.X(maxx), stroke: gc }));
   }
   const pts = (F, poly) => poly.map(p => `${F.X(p[0])},${F.Y(p[1])}`).join(' ');
   const COL = { ok: '#3ecf8e', warn: '#f5a524', bad: '#ff5d5d' };
@@ -705,14 +752,31 @@
     $('dispSel').querySelectorAll('button[data-d]').forEach(b => b.classList.toggle('on', fv.mode === b.dataset.d));        // toujours une seule active
     $('refSel').classList.toggle('off', fv.mode !== 'auto' && $('dispSel').offsetParent !== null);                               // la référence ne joue que si Auto est actif
   }
+  /* Écran déplacé : formes 3D dans le repère de la salle (x vers la droite, y vers le public, z vers le haut).
+     r.frame = base de l'écran dans la salle ; le faisceau, l'écran et la partie utile sont calculés dans le repère de l'écran (s, t) puis replacés dans la salle. */
+  const hull2 = pts => {
+    const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
+    const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+    for (const q of p) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+    for (const q of p.slice().reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+    return lo.slice(0, -1).concat(up.slice(0, -1));
+  };
+  function roomGeo(r) {
+    const f = r.frame, sw = S.sw / 2, to3 = (s, t) => [0, 1, 2].map(i => f.origin[i] + f.right[i] * s + f.up[i] * t);
+    return { f, P: [S.x, S.y, S.z], scr: [[-sw, S.sh], [sw, S.sh], [sw, 0], [-sw, 0]].map(p => to3(p[0], p[1])), quad: r.B.quad.map(p => to3(p[0], p[1])),
+      inter: r.ov.inter.map(p => to3(p[0], p[1])), T: to3(r.B.T[0], r.B.T[2]), cen: to3(r.q.centroid[0], r.q.centroid[1]), mid: to3(0, S.sh / 2) };
+  }
   function drawFace(r) {
     const svg = $('svgFace'); svg.closest('.card').classList.toggle('covered', !!(r.valid && r.covered));      // écran couvert : contour de la vue de face en vert
     if (!r.valid) { svg.replaceChildren(); return; }
-    const Q = r.B.quad, xs = Q.map(p => p[0]).concat(-S.sw / 2, S.sw / 2), ys = Q.map(p => p[1]).concat(0, S.sh);
+    const room = r.frame && faceView === 'room', G3 = room ? roomGeo(r) : null, pf = p => [p[0], p[2]];      // « Vue salle » : projection orthogonale sur le plan x–z de la salle
+    const Q = room ? G3.quad.map(pf) : r.B.quad, SC = room ? G3.scr.map(pf) : [[-S.sw / 2, S.sh], [S.sw / 2, S.sh], [S.sw / 2, 0], [-S.sw / 2, 0]];
+    const IN = room ? G3.inter.map(pf) : r.ov.inter, AIM = room ? pf(G3.T) : [r.B.T[0], r.B.T[2]], CEN = room ? pf(G3.cen) : r.q.centroid, SCC = room ? pf(G3.mid) : [0, S.sh / 2], VPp = room ? [S.x, S.z] : null;
+    const xs = Q.concat(SC, VPp ? [VPp] : []).map(p => p[0]), ys = Q.concat(SC, VPp ? [VPp] : []).map(p => p[1]);
     let [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
     if (!isThumb(svg) && !$('p-calc').classList.contains('cfg')) y1 += (isBig(svg) ? 0.3 : 0.2) * (y1 - y0);      // réserve de la place en haut pour les icônes de mouvement (en petit elles sont en bas à gauche)
     if (adv.ref !== 'auto') {      /* référence VP : le faisceau reste au centre de la vue, l'écran bouge · référence écran : l'écran reste au centre, le faisceau bouge */
-      const c = adv.ref === 'vp' ? r.q.centroid : [0, S.sh / 2];
+      const c = adv.ref === 'vp' ? CEN : SCC;
       const hx = Math.max(c[0] - x0, x1 - c[0]), hy = Math.max(c[1] - y0, y1 - c[1]);
       [x0, x1, y0, y1] = [c[0] - hx, c[0] + hx, c[1] - hy, c[1] + hy];
     }
@@ -725,26 +789,27 @@
     }
     const F = viewFrame(svg, [x0, x1, y0, y1], pad, false, undefined, mBot);
     if (adj && fv.manual) gridLines(svg, F, F.ix(0), F.ix(F.W), F.iy(F.H), F.iy(0)); else gridLines(svg, F, x0 - 1, x1 + 1, y0 - 1, y1 + 1);
-    const sx = F.X(-S.sw / 2), sy = F.Y(S.sh), sW = F.X(S.sw / 2) - sx, sH = F.Y(0) - sy;
+    const sx = Math.min(...SC.map(p => F.X(p[0]))), sy = Math.min(...SC.map(p => F.Y(p[1]))), sW = Math.max(...SC.map(p => F.X(p[0]))) - sx, sH = Math.max(...SC.map(p => F.Y(p[1]))) - sy;      // cadre de l'écran à l'image
     const lvl = verdict(r).lvl;
     svg.append(el('defs', {}), (() => {
       const d = el('defs', {});
-      d.innerHTML = `<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#12161b"/><line x1="0" y1="0" x2="0" y2="8" stroke="#2b3440" stroke-width="3"/></pattern><clipPath id="scrClip"><rect x="${sx}" y="${sy}" width="${sW}" height="${sH}"/></clipPath>`; return d;
+      d.innerHTML = `<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#12161b"/><line x1="0" y1="0" x2="0" y2="8" stroke="#2b3440" stroke-width="3"/></pattern><clipPath id="scrClip"><polygon points="${pts(F, SC)}"/></clipPath>`; return d;
     })());
-    svg.append(el('rect', { x: sx, y: sy, width: sW, height: sH, fill: 'url(#hatch)' }));                       // écran non couvert
+    svg.append(el('polygon', { points: pts(F, SC), fill: 'url(#hatch)' }));                                    // écran non couvert
     svg.append(el('polygon', { points: pts(F, Q), fill: 'rgba(255,93,93,.28)' }));                             // faisceau (perdu)
     svg.append(el('polygon', { points: pts(F, Q), fill: 'rgba(62,207,142,.42)', 'clip-path': 'url(#scrClip)' })); // faisceau ∩ écran (utile)
-    svg.append(el('rect', { x: sx, y: sy, width: sW, height: sH, fill: 'none', stroke: lvl === 'bad' ? SCREEN_RED : COL[lvl], 'stroke-width': 3 }));      // écran non couvert : rouge vif ; couvert : vert
+    svg.append(el('polygon', { points: pts(F, SC), fill: 'none', stroke: lvl === 'bad' ? SCREEN_RED : COL[lvl], 'stroke-width': 3 }));      // écran non couvert : rouge vif ; couvert : vert
     svg.append(el('polygon', { points: pts(F, Q), fill: 'none', stroke: '#4da3ff', 'stroke-width': 2, class: 'bglow' }));
     ['A', 'B', 'C', 'D'].forEach((n, i) => {
       const p = Q[i], ox = i === 0 || i === 3 ? -12 : 12, oy = i < 2 ? -8 : 16;
       svg.append(el('circle', { cx: F.X(p[0]), cy: F.Y(p[1]), r: 3.5, fill: '#4da3ff' }));
       svg.append(el('text', { x: F.X(p[0]) + ox, y: F.Y(p[1]) + oy, 'text-anchor': 'middle', fill: '#9cc9ff', 'font-size': 13, 'font-weight': 700 }, n));
     });
-    const cx = F.X(r.B.T[0]), cy = F.Y(r.B.T[2]);                                                               // point visé par l'axe optique
+    const cx = F.X(AIM[0]), cy = F.Y(AIM[1]);                                                                   // point visé par l'axe optique
     svg.append(el('path', { d: `M${cx - 7},${cy}H${cx + 7}M${cx},${cy - 7}V${cy + 7}`, stroke: '#fff', 'stroke-width': 1.5, opacity: .7 }));
+    if (VPp) svg.append(el('rect', { x: F.X(VPp[0]) - 8, y: F.Y(VPp[1]) - 6, width: 16, height: 12, rx: 2, fill: '#4da3ff' }));      // Vue salle : le VP, vu de face
     if (sW > 130 && sy > 34) {
-      const t = el('text', { x: F.X(0), y: sy - 8, 'text-anchor': 'middle', fill: '#e8edf2', 'font-size': 13 });       // largeur et hauteur de l'écran : violet si verrouillées
+      const t = el('text', { x: sx + sW / 2, y: sy - 8, 'text-anchor': 'middle', fill: '#e8edf2', 'font-size': 13 });       // largeur et hauteur de l'écran : violet si verrouillées
       const both = locks.sw && locks.sh;                                                      // écran entièrement verrouillé : « 4,00 × 2,25 m » en entier en violet ; une seule dimension verrouillée : seul son nombre
       [[fm(S.sw), 'sw'], [' × ', null], [fm(S.sh), 'sh'], [' m', null]].forEach(([txt, k]) => { const ts = el('tspan', (k && locks[k]) || both ? { fill: LOCKC } : {}, txt); t.append(ts); });
       svg.append(t);
@@ -755,18 +820,18 @@
     }
     const dm = dragMode();
     if (dm && !isThumb(svg)) {                                                       // poignée au centre de l'image : glisser = déplacer le faisceau
-      const g = r.q.centroid, free = dm !== 'trans' || !locks.x || !locks.z, hx = F.X(g[0]), hy = F.Y(g[1]);
+      const g = CEN, free = dm !== 'trans' || !locks.x || !locks.z || (r.frame && !locks.y), hx = F.X(g[0]), hy = F.Y(g[1]);
       svg.append(el('circle', { cx: hx, cy: hy, r: 17, fill: 'none', stroke: free ? DRAG_OPTS.find(o => o[0] === dm)[3] : '#b58cff', 'stroke-width': 1.5, 'stroke-dasharray': '3 3', opacity: .85, class: 'blink', 'pointer-events': 'none' }));
       if (free) svg.append(el('circle', { class: 'handle', cx: hx, cy: hy, r: 30, fill: 'transparent' }));
     }
     if (isThumb(svg)) {                                                            // petite vue : dimensions du faisceau + angles aux sommets
       const q = r.q, inw = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
       ['A', 'B', 'C', 'D'].forEach((n, i) => val(svg, F.X(Q[i][0]) + inw[i][0] * 6, F.Y(Q[i][1]) + inw[i][1] * 16, `${fm(q.angles[n], 1)}°`, inw[i][0] > 0 ? 'start' : 'end', '#9cc9ff', 11));
-      val(svg, F.X(0), F.Y(0) + 4 + 16 * 1, `faisceau ${fm(q.widthTrap)} × ${fm(q.heightTrap)} m`, 'middle', '#9cc9ff', 12);
+      val(svg, sx + sW / 2, sy + sH + 4 + 16 * 1, `faisceau ${fm(q.widthTrap)} × ${fm(q.heightTrap)} m`, 'middle', '#9cc9ff', 12);
     }
     if (dragNow) {
       const o = DRAG_OPTS.find(o => o[0] === dragNow);      // nom du mouvement, tant que l'icône est tenue
-      svg.append(el('text', { x: F.X(0), y: Math.min(F.H - 8, F.Y(0) + (isThumb(svg) ? 44 : 24)), 'text-anchor': 'middle', fill: o[3], 'font-size': 14, 'font-weight': 700, stroke: '#0f1216', 'stroke-width': 4, 'paint-order': 'stroke' }, o[1]));
+      svg.append(el('text', { x: sx + sW / 2, y: Math.min(F.H - 8, sy + sH + (isThumb(svg) ? 44 : 24)), 'text-anchor': 'middle', fill: o[3], 'font-size': 14, 'font-weight': 700, stroke: '#0f1216', 'stroke-width': 4, 'paint-order': 'stroke' }, o[1]));
     }
   }
 
@@ -796,9 +861,55 @@
     svg.append(el('text', { x, y, 'text-anchor': anchor, fill: color, 'font-size': size, 'font-weight': 700, stroke: '#0f1216', 'stroke-width': 3.5, 'paint-order': 'stroke' }, text));
   }
   /* carré du VP pivoté de l'angle donné (degrés) quand l'orientation est manuelle (B ou C) ; droit en visée automatique */
-  const vpTilt = (cx, cy, deg) => S.rot ? { transform: `rotate(${deg} ${cx} ${cy})` } : {};
+  const vpTilt = (cx, cy, deg) => S.rot || (lastR && lastR.frame) ? { transform: `rotate(${deg} ${cx} ${cy})` } : {};
+  /* Écran déplacé, vues de côté et de dessus : l'écran est un quadrilatère 3D, projeté sur le plan de la vue (côté : y–z, dessus : x–y).
+     Écran = contour rouge vif, faisceau sur son plan = contour orange, partie utile = contour vert (traits épais quand la projection est un segment). */
+  function drawRoomView(r, id, pr, topView) {
+    const svg = $(id), g = roomGeo(r), w3 = (() => { const d = [0, 1, 2].map(i => g.T[i] - g.P[i]), l = Math.hypot(...d) || 1; return d.map(x => x / l); })();
+    const SC = g.scr.map(pr), QQ = g.quad.map(pr), IN = g.inter.map(pr), Pv = pr(g.P), Tv = pr(g.T), all = SC.concat(QQ, [Pv]);
+    const a0 = Math.min(...all.map(p => p[0])), a1 = Math.max(...all.map(p => p[0])), b0 = Math.min(...all.map(p => p[1])), b1 = Math.max(...all.map(p => p[1]));
+    const mBot = dispBot(svg), man = dispManual(svg), dvv = dv[id];
+    let F;
+    if (topView) {
+      const hx = Math.max(Math.abs(a0), Math.abs(a1), Math.abs(S.x)) * 1.15 + 0.5;
+      const hud = isBig(svg) && svg.closest('.card').querySelector('.hud');
+      const mTop = hud ? Math.max(30, hud.getBoundingClientRect().bottom - svg.getBoundingClientRect().top + 48) : undefined;
+      F = man ? viewFrame(svg, manualBounds(svg, dvv, mTop == null ? 30 : mTop, mBot || 30), 0, true, mTop, mBot) : viewFrame(svg, [-hx, hx, Math.min(-0.2, b0 - 0.3), Math.max(S.y * 1.25, S.y + 2, b1 + 0.3)], 0.3, true, mTop, mBot);
+    } else {
+      const maxz = Math.max(b1, S.z, S.sh) + 0.2, minz = Math.min(0, b0, S.z);
+      F = man ? viewFrame(svg, manualBounds(svg, dvv, 30, mBot || 30), 0, false, undefined, mBot) : viewFrame(svg, [Math.min(-0.3, a0 - 0.3), Math.max(S.y * 1.25, S.y + 2, a1 + 0.3), minz - 0.2, maxz + Math.max(1, 0.2 * maxz)], 0.3, false, undefined, mBot);
+    }
+    gridLines(svg, F, ...(man ? visRange(F) : F.b));
+    if (!topView) { const [bx0, bx1] = F.b; svg.append(el('line', { x1: F.X(bx0), x2: F.X(bx1), y1: F.Y(0), y2: F.Y(0), stroke: '#556', 'stroke-width': 2 })); }      // sol
+    const P2 = (a, w) => hull2(a).map(p => `${F.X(p[0])},${F.Y(p[1])}`).join(' ');
+    svg.append(el('polygon', { points: P2([Pv, ...QQ]), fill: 'rgba(77,163,255,.16)', stroke: '#4da3ff', class: 'bglow' }));
+    svg.append(el('polygon', { points: P2(QQ), fill: 'none', stroke: LOST_DARK, 'stroke-width': 2, 'stroke-linejoin': 'round' }));
+    if (IN.length > 1) svg.append(el('polygon', { points: P2(IN), fill: 'rgba(62,207,142,.25)', stroke: USEFUL, 'stroke-width': 3.2, 'stroke-linejoin': 'round' }));
+    svg.append(el('polygon', { points: P2(SC), fill: 'rgba(252,5,34,.12)', stroke: SCREEN_RED, 'stroke-width': 2.2, 'stroke-linejoin': 'round' }));      // l'écran par-dessus : toujours visible
+    svg.append(el('line', { x1: F.X(Pv[0]), y1: F.Y(Pv[1]), x2: F.X(Tv[0]), y2: F.Y(Tv[1]), stroke: '#fff', 'stroke-dasharray': '4 4', opacity: .5 }));
+    const ang = topView ? Math.atan2(w3[1], w3[0]) * 180 / Math.PI + 90 : Math.atan2(-w3[2], w3[1]) * 180 / Math.PI - 180;      // le VP suit son pan (dessus) / son tilt (côté)
+    svg.append(el('rect', { x: F.X(Pv[0]) - 8, y: F.Y(Pv[1]) - 6, width: 16, height: 12, rx: 2, fill: '#4da3ff', ...vpTilt(F.X(Pv[0]), F.Y(Pv[1]), ang) }));
+    if (isBig(svg)) {
+      if (topView) {
+        dim(svg, F, [S.x, 0], [S.x, S.y], `y = ${fm(S.y)} m`, [34, 0], [10, 5], 'start', pcol('y', DIM));
+        dim(svg, F, [0, S.y], [S.x, S.y], `x = ${fm(S.x)} m`, [0, 30], [0, 22], 'middle', pcol('x', DIM));
+      } else {
+        dim(svg, F, [0, 0], [S.y, 0], `y = ${fm(S.y)} m`, [0, 28], [0, 22], 'middle', pcol('y', DIM));
+        dim(svg, F, [S.y, 0], [S.y, S.z], `z = ${fm(S.z)} m`, [34, 0], [10, 5], 'start', pcol('z', DIM));
+      }
+    } else if (topView) {
+      val(svg, F.X(S.x), F.Y(S.y) + 34, `x = ${fm(S.x)} m`, 'middle', pcol('x', GREY), 11);
+      val(svg, 10, F.H - 10, `z = ${fm(S.z)} m`, 'start', pcol('z', GREY), 11);
+    } else {
+      val(svg, F.X(S.y), F.Y(S.z) - 22, `z = ${fm(S.z)} m`, 'middle', pcol('z', GREY), 11);
+      val(svg, 10, F.H - 10, `x = ${fm(S.x)} m`, 'start', pcol('x', GREY), 11);
+    }
+    handle(svg, F, Pv[0], Pv[1], topView ? ['x', 'y'] : ['y', 'z']);
+  }
   function drawSide(r) {
     const svg = $('svgSide'); if (!r.valid) { svg.replaceChildren(); return; }
+    if (r.frame && faceView === 'room') { drawRoomView(r, 'svgSide', p => [p[1], p[2]], false); return; }
+    const S = r.Sf;      // Vue écran : la vue de côté est dessinée dans le repère de l'écran (écran à plat) ; sans écran déplacé, S est inchangé
     const qz = r.B.quad.map(p => p[1]), zHi = Math.max(...qz), zLo = Math.min(...qz);        // étendue verticale réelle du faisceau = ses 4 coins A B C D (pas le milieu des bords : pan / roll / keystone le font déborder), comme la vue de face
     const maxz = Math.max(S.sh, S.z, zHi) + 0.2, minz = Math.min(0, zLo, S.z);          // le VP peut passer sous la ligne du sol (z < 0)
     const mBot = dispBot(svg), man = dispManual(svg), F = man ? viewFrame(svg, manualBounds(svg, dv.svgSide, 30, mBot || 30), 0, false, undefined, mBot) : viewFrame(svg, [-0.3, Math.max(S.y * 1.25, S.y + 2), minz - 0.2, maxz + Math.max(1, 0.2 * maxz)], 0.3, false, undefined, mBot);
@@ -824,10 +935,12 @@
       val(svg, F.X(S.y), F.Y(S.z) - 22, `z = ${fm(S.z)} m`, 'middle', pcol('z', GREY), 11);
       val(svg, 10, F.H - 10, `x = ${fm(S.x)} m`, 'start', pcol('x', GREY), 11);
     }
-    handle(svg, F, S.y, S.z, ['y', 'z']);
+    if (!r.frame) handle(svg, F, S.y, S.z, ['y', 'z']);      // écran déplacé : pas de poignée (glisser le VP dans la Vue salle uniquement)
   }
   function drawTop(r) {
     const svg = $('svgTop'); if (!r.valid) { svg.replaceChildren(); return; }
+    if (r.frame && faceView === 'room') { drawRoomView(r, 'svgTop', p => [p[0], p[1]], true); return; }
+    const S = r.Sf;      // Vue écran : la vue de dessus est dessinée dans le repère de l'écran (écran à plat)
     const qx = r.B.quad.map(p => p[0]), xL = Math.min(...qx), xR = Math.max(...qx);          // étendue horizontale réelle du faisceau = ses 4 coins A B C D (pas le milieu des bords : pan / roll / keystone le font déborder), comme la vue de face
     const hx = Math.max(Math.abs(xL), Math.abs(xR), S.sw / 2, Math.abs(S.x)) * 1.15 + 0.5;
     const hud = isBig(svg) && svg.closest('.card').querySelector('.hud');                    // plein écran : l'écran est en haut, sous le bandeau d'état → on réserve sa hauteur
@@ -852,7 +965,7 @@
       val(svg, F.X(S.x), F.Y(S.y) + 34, `x = ${fm(S.x)} m`, 'middle', pcol('x', GREY), 11);      // sous le VP
       val(svg, 10, F.H - 10, `z = ${fm(S.z)} m`, 'start', pcol('z', GREY), 11);
     }
-    handle(svg, F, S.x, S.y, ['x', 'y']);
+    if (!r.frame) handle(svg, F, S.x, S.y, ['x', 'y']);
   }
 
   /* glisser le VP : horizontal / vertical de la vue -> paramètres (les axes verrouillés ne bougent pas) */
@@ -2154,6 +2267,7 @@
 
   let vpeProbe = false;                                                  // vrai pendant le recalcul d'une ligne conservée avec ses propres points (voir plus bas)
   function buildDetails(r) {
+    const S = r.Sf;      // les calculs détaillés se lisent dans le repère de l'écran (identique à la salle tant que l'écran n'est pas déplacé)
     const v = vpOf(), Q = r.B.quad, q = r.q, N = ['A', 'B', 'C', 'D'], g = r.geo;
     const L = (n, f, val, hl = [], t) => ({ n, f, val, hl, t });      // t : intitulé affiché en jaune en haut du graphique (par défaut, le nom de la ligne)
     const one = rw => ({ ...rw, one: true });      // ligne valable pour plusieurs traits (les deux côtés parallèles, les deux diagonales) : un appui les touche tous, mais un seul est mis en surbrillance, celui qui a été touché
@@ -2872,7 +2986,7 @@
   $('viz').addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) { locks[c.dataset.k] = !locks[c.dataset.k]; render(); } });
   addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.card.full').forEach(c => toggleFull(c, false)); });
   render();
-  /* aides de test : ?details=quad|pos|scr|px  ?auto=1  ?unlock=1  ?adv=lens,trans,rot,off  ?lens=sx,sy (en %)  ?pop=lens  ?scroll=1  ?simdrag=dx,dy (pixels, sur la poignée de la vue de face)  ?src=free|std|maker  ?rot=pan,tilt,roll  ?warn=1 (ouvre la liste des alertes) */
+  /* aides de test : ?details=quad|pos|scr|px  ?auto=1  ?unlock=1  ?adv=lens,trans,rot,off  ?lens=sx,sy (en %)  ?pop=lens  ?scroll=1  ?simdrag=dx,dy (pixels, sur la poignée de la vue de face)  ?scr=dx,dy,dz,lacet,tangage,roulis  ?faceview=room|screen  ?src=free|std|maker  ?rot=pan,tilt,roll  ?warn=1 (ouvre la liste des alertes) */
   const qs = new URLSearchParams(location.search);
   if (qs.get('dragnow')) { dragNow = qs.get('dragnow'); render(); }      // aide de test : affiche le nom du mouvement
   if (qs.get('open')) document.querySelectorAll('#params .card').forEach(c => c.classList.remove('collapsed'));      // aide de test : déploie tous les blocs
@@ -2880,19 +2994,22 @@
   if (qs.get('unlock')) { Object.keys(locks).forEach(k => locks[k] = false); render(); }
   if (qs.get('auto')) { for (let i = 0; i < +qs.get('auto'); i++) $('auto').click(); }
   if (qs.get('adv')) qs.get('adv').split(',').forEach(id => { const c = $('adv_' + id); if (c) { c.checked = true; c.dispatchEvent(new Event('change')); } });
+  if (qs.get('scr')) { const c = $('adv_scr'); c.checked = true; c.dispatchEvent(new Event('change')); const a = qs.get('scr').split(',').map(Number); Object.assign(S.scr, { dx: a[0] || 0, dy: a[1] || 0, dz: a[2] || 0, yaw: a[3] || 0, pitch: a[4] || 0, roll: a[5] || 0 }); render(); }      // ?scr=dx,dy,dz,lacet,tangage,roulis
+  if (qs.get('faceview')) { faceView = qs.get('faceview'); render(); }      // ?faceview=room|screen
   if (qs.get('src')) { adv.src = qs.get('src'); render(); }
   if (qs.get('rot') && S.rot) { [S.rot.pan, S.rot.tilt, S.rot.roll] = qs.get('rot').split(',').map(Number); render(); }
   if (qs.get('lens')) { const [a, b] = qs.get('lens').split(',').map(Number); S.sx = a / 100; S.sy = b / 100; render(); }
   if (qs.get('pop')) document.querySelector(`.info[data-h=${qs.get('pop')}]`).click();
   if (qs.get('scroll')) $('params').scrollTop = 1e5;
+  if (qs.get('dragmode')) { adv.drag = qs.get('dragmode'); render(); }      // ?dragmode=lens|trans|rot|zoom : option agissant au glisser (test)
   if (qs.get('simdrag')) {
     const [dx, dy] = qs.get('simdrag').split(',').map(Number), h = document.querySelector('#svgFace .handle'), svg = $('svgFace');
     if (h) {
-      const rc = h.getBoundingClientRect(), x = rc.left + rc.width / 2, y = rc.top + rc.height / 2, k = svg._F.k, c0 = lastR.q.centroid;
+      const rc = h.getBoundingClientRect(), x = rc.left + rc.width / 2, y = rc.top + rc.height / 2, k = svg._F.k, c0 = lastR.q.centroid, rg0 = lastR.frame ? roomGeo(lastR).cen : null;
       const ev = (t, px, py) => new PointerEvent(t, { clientX: px, clientY: py, pointerId: 1, bubbles: true });
       h.dispatchEvent(ev('pointerdown', x, y)); svg.dispatchEvent(ev('pointermove', x + dx, y + dy));
       const c1 = lastR.q.centroid; svg.dispatchEvent(ev('pointerup', x + dx, y + dy));
-      document.body.dataset.sim = JSON.stringify({ wantX: dx / k, wantZ: -dy / k, gotX: c1[0] - c0[0], gotZ: c1[1] - c0[1], sx: S.sx, sy: S.sy, x: S.x, z: S.z, rot: S.rot });
+      document.body.dataset.sim = JSON.stringify({ wantX: dx / k, wantZ: -dy / k, gotX: c1[0] - c0[0], gotZ: c1[1] - c0[1], roomGot: rg0 ? (g1 => [g1[0] - rg0[0], g1[1] - rg0[1], g1[2] - rg0[2]].map(v => +v.toFixed(3)))(roomGeo(lastR).cen) : null, sx: S.sx, sy: S.sy, x: S.x, z: S.z, rot: S.rot });
     } else document.body.dataset.sim = 'no handle';
   }
   if (qs.get('warn')) { warnOpen = true; render(); }

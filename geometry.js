@@ -16,8 +16,38 @@ const deg = r => r * 180 / Math.PI;
 
 const RANGES = { x:[-10,10], y:[0.5,30], z:[0,10], zoom:[0,100], sw:[0.5,20], sh:[0.3,12] };
 
-function makeScreen(sw, sh) {
-  return { w: sw, h: sh, origin:[0,0,0], right:[1,0,0], up:[0,0,1], normal:[0,1,0] };
+/* Écran déplacé (S.scr = { dx, dy, dz, yaw, pitch, roll }, mètres et degrés) : tous les décalages à 0 = écran droit, au repère de la salle.
+   Le centre de l'écran est décalé de (dx, dy, dz) puis l'écran tourne autour de son centre :
+   lacet (yaw) autour de la verticale, > 0 = la face regarde vers +x ; tangage (pitch), > 0 = la face regarde vers le haut ;
+   roulis (roll) dans son plan, > 0 = le bord droit monte. Ordre : roulis, puis tangage, puis lacet. */
+const scrActive = S => !!S.scr && !!(S.scr.dx || S.scr.dy || S.scr.dz || S.scr.yaw || S.scr.pitch || S.scr.roll);
+const matVec = (m, v) => [m[0][0]*v[0] + m[0][1]*v[1] + m[0][2]*v[2], m[1][0]*v[0] + m[1][1]*v[1] + m[1][2]*v[2], m[2][0]*v[0] + m[2][1]*v[1] + m[2][2]*v[2]];
+const matMul = (a, b) => a.map(r => [0, 1, 2].map(j => r[0]*b[0][j] + r[1]*b[1][j] + r[2]*b[2][j]));
+function makeScreen(sw, sh, xf) {
+  if (!xf || !scrActive({ scr: xf })) return { w: sw, h: sh, origin:[0,0,0], right:[1,0,0], up:[0,0,1], normal:[0,1,0] };
+  const r = a => a * Math.PI / 180, cz = Math.cos(r(-xf.yaw || 0)), sz = Math.sin(r(-xf.yaw || 0)), cx = Math.cos(r(xf.pitch || 0)), sx = Math.sin(r(xf.pitch || 0)), cy = Math.cos(r(-xf.roll || 0)), sy = Math.sin(r(-xf.roll || 0));
+  const Rz = [[cz,-sz,0],[sz,cz,0],[0,0,1]], Rx = [[1,0,0],[0,cx,-sx],[0,sx,cx]], Ry = [[cy,0,sy],[0,1,0],[-sy,0,cy]];
+  const R = matMul(Rz, matMul(Rx, Ry)), right = matVec(R, [1,0,0]), normal = matVec(R, [0,1,0]), up = matVec(R, [0,0,1]);
+  const C = [xf.dx || 0, xf.dy || 0, sh / 2 + (xf.dz || 0)];
+  return { w: sw, h: sh, origin: sub(C, mul(up, sh / 2)), right, up, normal };
+}
+/* Problème équivalent dans le repère de l'écran (écran droit, origine au milieu de son pied) : la position du VP, son orientation (pan, tilt, roll)
+   et le point visé y sont réexprimés. Tous les calculs (faisceau, recouvrement, détails, Auto) se font dans ce repère, comme avant.
+   Renvoie S tel quel si l'écran n'est pas déplacé ; sinon une copie avec `frame` (base de l'écran dans la salle) et `scr` = null. */
+function frameState(S) {
+  if (!scrActive(S)) return S;
+  const f = makeScreen(S.sw, S.sh, S.scr), P = [S.x, S.y, S.z];
+  const into = v => [dot(v, f.right), dot(v, f.normal), dot(v, f.up)];
+  let w;
+  if (S.rot) { const p = rad(S.rot.pan), t = rad(S.rot.tilt); w = [Math.sin(p) * Math.cos(t), -Math.cos(p) * Math.cos(t), Math.sin(t)]; }
+  else w = unit(sub(add(f.origin, mul(f.up, S.sh / 2)), P));
+  let ur = cross([0,0,1], w); ur = len(ur) < 1e-9 ? [1,0,0] : unit(ur);
+  const ws = into(w), urs = into(ur);
+  let u1 = cross([0,0,1], ws); u1 = len(u1) < 1e-9 ? [1,0,0] : unit(u1);
+  const v1 = cross(ws, u1), a = deg(Math.atan2(dot(urs, v1), dot(urs, u1)));
+  const rot = { pan: deg(Math.atan2(ws[0], -ws[1])), tilt: deg(Math.asin(Math.max(-1, Math.min(1, ws[2])))), roll: (S.rot ? S.rot.roll || 0 : 0) + a };
+  const Ps = into(sub(P, f.origin));
+  return { ...S, x: Ps[0], y: Ps[1], z: Ps[2], rot, scr: null, frame: f, room: S };
 }
 function ratioOf(vp, zoom) {
   return vp.zoomable ? vp.rmin + (vp.rmax - vp.rmin) * zoom / 100 : vp.rmin;
@@ -77,16 +107,16 @@ function checkSetup(vp, S, ctx, r) {
    pan = tilt = roll = 0 : axe perpendiculaire à l'écran, image droite. */
 const rad = d => d * Math.PI / 180;
 function autoAim(S) {                                      // angles pour viser S.aim (centre de l'écran si absent)
-  const T = S.aim || [0, S.sh / 2];                          // point visé sur l'écran (x, hauteur) : centre de l'écran par défaut
-  const d = [T[0] - S.x, -S.y, T[1] - S.z];
+  const T = S.aim || [0, S.sh / 2];                          // point visé sur l'écran (s, t) dans le repère de l'écran : centre de l'écran par défaut
+  const f = makeScreen(S.sw, S.sh, S.scr), d = sub(add(f.origin, add(mul(f.right, T[0]), mul(f.up, T[1]))), [S.x, S.y, S.z]);
   return { pan: deg(Math.atan2(d[0], -d[1])), tilt: deg(Math.atan2(d[2], Math.hypot(d[0], d[1]))), roll: 0 };
 }
 
 /* ---------- Faisceau ----------
    Les rayons du panneau (a, b) ∈ [-1,1]² sont décalés de (sa, sb) : lens shift + throw offset.
    S.sx, S.sy = lens shift ; S.oy = throw offset (0 si absent). */
-function computeBeam(vp, S) {
-  const scr = makeScreen(S.sw, S.sh);
+function computeBeam(vp, S0) {
+  const S = frameState(S0), scr = makeScreen(S.sw, S.sh);
   const P = [S.x, S.y, S.z];
   let w;
   if (S.rot) {
@@ -120,7 +150,7 @@ function computeBeam(vp, S) {
     const H = add(P, mul(dir, t)), r = sub(H, scr.origin);
     quad.push([dot(r, scr.right), dot(r, scr.up)]);
   }
-  return { valid: true, scr, P, T, dist, w, u, v, ratio, tanH, tanV, sa, sb, roll, quad };
+  return { valid: true, scr, P, T, dist, w, u, v, ratio, tanH, tanV, sa, sb, roll, quad, frame: S.frame || null };
 }
 
 /* écran (s,t) -> panneau du VP en pixels (X vers la droite, Y vers le haut) */
@@ -215,8 +245,8 @@ function covers(Q, S) {
 }
 
 /* ---------- Calcul complet ---------- */
-function compute(vp, S) {
-  const B = computeBeam(vp, S);
+function compute(vp, S0) {
+  const S = frameState(S0), B = computeBeam(vp, S);
   if (!B.valid) return { valid: false };
   const ov = overlap(B.quad, S), q = quadStats(B.quad), covered = covers(B.quad, S);
   const pan = p => toPanel(B, vp, p[0], p[1]);
@@ -248,7 +278,7 @@ function compute(vp, S) {
     usefulPoly: uP, lostPct: Math.max(0, 100*(total-useful)/total), usefulPct: Math.min(100, 100*useful/total),
     perM2: ov.ai > 0 ? useful/ov.ai : 0, pixelMm: ov.ai > 0 ? 1000*Math.sqrt(ov.ai/useful) : 0 };
   const uncovered = covered ? 0 : Math.max(0, ov.as - ov.ai);                 // aire d'écran hors faisceau : information, ne décide pas du verdict
-  return { valid:true, B, q, ov, geo, scr, px, ratio:B.ratio, covered, uncovered, uncoveredPct:100*uncovered/ov.as,
+  return { valid:true, B, q, ov, geo, scr, px, Sf: S, frame: S.frame || null, ratio:B.ratio, covered, uncovered, uncoveredPct:100*uncovered/ov.as,
            lux: vp.lm / q.area, panelOf: pan };
 }
 
@@ -383,7 +413,7 @@ function rayHit(B, a, b) {
   return [dot(r, B.scr.right), dot(r, B.scr.up)];
 }
 
-const api = { checkSetup, STD, REAL_MAX, hasMakerLens, lensLimits, throwOffsetOf, autoAim, rayHit, RANGES, ratioOf, makeScreen, computeBeam, toPanel, area, clip, clipRect, quadStats,
+const api = { scrActive, frameState, checkSetup, STD, REAL_MAX, hasMakerLens, lensLimits, throwOffsetOf, autoAim, rayHit, RANGES, ratioOf, makeScreen, computeBeam, toPanel, area, clip, clipRect, quadStats,
   overlap, covers, compute, autoPlan, mid, distToLine, d2 };
 if (typeof module !== 'undefined') module.exports = api; else root.VPGeo = api;
 })(this);

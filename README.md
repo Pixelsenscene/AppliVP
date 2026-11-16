@@ -4,7 +4,7 @@ Application web (future PWA) pour placer et choisir des vidéoprojecteurs face �
 (avec déformation en trapèze), pixels utiles / perdus, propositions de placement automatiques.
 Pensée d'abord pour l'**iPad** (paysage et portrait), utilisable aussi sur Mac et iPhone.
 
-> Version de travail : `1.1.12` (source unique : `version.js`). Les modules Vidéo-projecteurs et Écrans (bibliothèques) sont en place ; le menu Projets a été retiré, ses fonctions (import / export de fichiers) sont dans Préférences.
+> Version de travail : `1.1.13` (source unique : `version.js`). Les modules Vidéo-projecteurs et Écrans (bibliothèques) sont en place ; le menu Projets a été retiré, ses fonctions (import / export de fichiers) sont dans Préférences.
 
 ## Utilisation
 
@@ -79,6 +79,14 @@ En ligne (GitHub Pages, une fois activé) : <https://pixelsenscene.github.io/App
     L'image se déplace mais se déforme en trapèze.
   - **Throw offset** : décalage vertical fixe de l'image par rapport à l'axe de l'objectif (standard +60 %), appliqué
     seulement si la case est cochée.
+  - **Déplacer l'écran** (bloc Écran) : décale l'écran (x, y, z) et l'oriente (lacet, tangage, roulis) à partir de sa position droite
+    (tout à 0), autour de son centre. Un appui sur le nom d'un curseur le remet à 0. La vue de face propose alors
+    **Vue salle** (par défaut : projection orthogonale de l'écran dans la salle, plan x–z) et **Vue écran** (écran à plat, comme
+    sans l'option). Les trois vues suivent ce choix : en Vue salle, côté et dessus montrent l'écran tel qu'il est dans la salle ; en Vue écran, elles le montrent à plat, avec le VP placé par rapport à lui (cotes x, y, z relatives à l'écran, sans poignée de glisser). Le glisser dans la vue de face marche aussi avec un écran déplacé :
+    le faisceau suit le doigt dans le plan de l'écran (Vue écran) ou dans le plan x–z de la salle (Vue salle). Translation : le VP glisse
+    parallèlement à l'écran (x, y et z peuvent changer) ; rotation : le VP vise le point de l'écran sous le doigt ; lens shift et zoom
+    comme avant. Exception : écran vu de profil en Vue salle (message). Curseurs de « Déplacer l'écran » : rouges, le dernier touché
+    passe au rouge orangé.
   - Une icône « i » à côté de chaque option ouvre une bulle d'aide.
 - **Glisser le faisceau dans la vue de face** : une poignée au centre de l'image déplace le faisceau ; un sélecteur
   (A / B / C) choisit l'option qui reçoit le mouvement. Les vues de côté et de dessus suivent.
@@ -111,7 +119,11 @@ En ligne (GitHub Pages, une fois activé) : <https://pixelsenscene.github.io/App
 ## Modèle géométrique
 
 - Repère en mètres : origine au centre de la **base** de l'écran, `x` vers la droite, `y` vers le public, `z` vers le haut.
-- Écran dans un plan frontal (il est défini par un plan, donc l'inclinaison reste possible plus tard).
+- Écran dans un plan frontal par défaut. Avec « Déplacer l'écran » (`S.scr = {dx, dy, dz, yaw, pitch, roll}`, en m et °), le plan est
+  déplacé puis tourné autour du centre de l'écran (ordre : roulis, tangage, lacet ; lacet > 0 = la face regarde vers +x, tangage > 0
+  = vers le haut). Les calculs se font dans le **repère de l'écran** (`frameState` : position du VP, orientation et visée y sont
+  réexprimées, l'écran redevient frontal) ; les vues et les curseurs restent dans le repère de la salle. `compute` renvoie
+  `frame` (base de l'écran dans la salle, `null` si l'écran n'est pas déplacé) et `Sf` (état dans le repère de l'écran).
 - Orientation du VP : **visée automatique** sur le centre de l'écran par défaut. Dès que B ou C est cochée, elle devient
   **manuelle** (`S.rot = {pan, tilt, roll}` en degrés ; pan > 0 vers +x, tilt > 0 vers le haut ; 0/0/0 = axe perpendiculaire
   à l'écran). Sans B ni C, la visée automatique est rétablie.
@@ -135,7 +147,7 @@ En ligne (GitHub Pages, une fois activé) : <https://pixelsenscene.github.io/App
 
 - Service worker et icônes (installation sur l'écran d'accueil, usage hors ligne).
 - Modules Projecteurs et Écrans (édition et sauvegarde), Projets, Réglages.
-- Écran incliné.
+- Écran déplacé : positions de l'Auto exprimées dans la salle (plages de y / x / z inchangées).
 - **Calibration dans Réglages** : rendre modifiables les paramètres aujourd'hui fixés dans le code, notamment les valeurs
   standard (`STD` : lens shift ±30 % / ±10 %, throw offset +60 %), les seuils d'alerte (`REAL_MAX`), la course des
   curseurs en mode libre et les pas du glisser.
@@ -146,7 +158,7 @@ En ligne (GitHub Pages, une fois activé) : <https://pixelsenscene.github.io/App
 ## Tests rapides
 
 Paramètres d'URL utiles pour vérifier un réglage sans manipuler l'interface :
-`?adv=lens,trans,rot,off` · `?lens=sx,sy` (en %) · `?src=free|std|maker` · `?rot=pan,tilt,roll` · `?pop=lens` ·
+`?adv=lens,trans,rot,off` · `?lens=sx,sy` (en %) · `?src=free|std|maker` · `?rot=pan,tilt,roll` · `?scr=dx,dy,dz,lacet,tangage,roulis` · `?faceview=room|screen` · `?pop=lens` ·
 `?warn=1` · `?scroll=1` · `?simdrag=dx,dy` (glisser simulé sur la poignée de la vue de face) · `?auto=1` · `?unlock=1` ·
 `?details=quad|pos|scr|px` · `?full=side|top`.
 Le moteur (`geometry.js`) s'exporte en module Node : `require('./geometry.js')` permet de le tester en ligne de commande.
