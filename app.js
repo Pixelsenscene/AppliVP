@@ -11,8 +11,11 @@
   /* ---------- État ---------- */
   const S = { vp: 'VP1', sw: 4, sh: 2.25, x: 0, y: 9, z: 1.5, zoom: 50, sx: 0, sy: 0, oy: 0, rot: null, aim: null };   // sx, sy : lens shift · oy : throw offset · rot : orientation manuelle {pan, tilt, roll} · aim : point visé sur l'écran [x, z] (null = centre)
   const st = { chain: true, aspect: 16 / 9 };
+  const in3d = () => !!(window.View3D && window.View3D.active);      // page 3D affichée (vue de face simplifiée, pas de défilement automatique des réglages)
   // verrouillé = true. Par défaut : projecteur et écran figés, position + zoom libres.
-  const locks = { vp: true, sw: true, sh: true, x: false, y: false, z: false, zoom: false };
+  const locks = { vp: true, sw: true, sh: true, x: false, y: false, z: false, zoom: false,
+    pan: false, tilt: false, roll: false, sdx: false, sdy: false, sdz: false, syaw: false, spitch: false, sroll: false };      // les 9 derniers : orientation du VP et position / orientation de l'écran, verrouillés par les poignées de la page 3D
+  const ADV_LOCKABLE = ['pan', 'tilt', 'roll', 'sdx', 'sdy', 'sdz', 'syaw', 'spitch', 'sroll'];
 
   /* ---------- Derniers paramètres modifiés ----------
      Un curseur qui bouge devient jaune intense (classe .hot) ; une fois relâché il reste jaune, moins vif, et son cadenas prend un contour jaune
@@ -63,7 +66,7 @@
       const row = document.querySelector(TOUCH_KEYS.includes(k) ? `.row[data-k=${k}]` : `.row[data-a=${k}]`); if (!row) continue;
       row.classList.toggle('hot', hot && touched.has(k)); row.classList.toggle('recent', !hot && touched.has(k));
     }
-    if (hot && !gestureInParams) revealRows([...document.querySelectorAll('#params .row.hot')]);        // geste dans le panneau lui-même : on ne le fait pas bouger sous le doigt
+    if (hot && !gestureInParams && !in3d()) revealRows([...document.querySelectorAll('#params .row.hot')]);        // geste dans le panneau lui-même : on ne le fait pas bouger sous le doigt
   }
   const endGesture = () => { down.clear(); gestureInParams = false; gesture = false; clearTimeout(hotT); hot = false; syncTouched(); };
   document.addEventListener('pointerdown', e => { if (e.isPrimary) { down.clear(); gestureInParams = !!e.target.closest('#params'); } down.add(e.pointerId); if (down.size === 1) gesture = false; }, true);
@@ -217,9 +220,21 @@
     if (effChain()) { if (k === 'sw') S.sh = clampP('sh', S.sw / st.aspect); if (k === 'sh') S.sw = clampP('sw', S.sh * st.aspect); }
     reaim(); render();
   }
+  /* Chaque pastille (VP, Écran, Position, Zoom) : un appui sur son nom verrouille / libère tout le groupe ; un appui sur la flèche ▾ ouvre un volet sous la pastille
+     où l'on coche les paramètres à verrouiller un par un (Écran : Largeur, Hauteur ; Position : Recul, Centrage, Hauteur…). */
+  const LOCK_LABELS = { vp: 'Projecteur', sw: 'Largeur', sh: 'Hauteur', y: 'Recul (y)', x: 'Centrage (x)', z: 'Hauteur (z)', zoom: 'Zoom' };
+  const closeLockMenus = except => document.querySelectorAll('.pillMenu').forEach(m => { if (m !== except) m.classList.add('hidden'); });
   function buildLockPills() {
-    $('locks').innerHTML = GROUPS.map(g => `<button class="pill" data-g="${g.id}">${ICON_L}<span>${g.short}</span></button>`).join('');
-    $('locks').onclick = e => { const b = e.target.closest('.pill'); if (b) toggleGroup(b.dataset.g); };
+    $('locks').innerHTML = GROUPS.map(g => `<div class="pillBox"><button class="pill" data-g="${g.id}">${ICON_L}<span>${g.short}</span><span class="car" title="Choisir les paramètres à verrouiller">▾</span></button>` +
+      `<div class="pillMenu hidden">${g.keys.map(k => `<button type="button" class="pmItem" data-k="${k}"><i class="ck"></i>${LOCK_LABELS[k]}</button>`).join('')}</div></div>`).join('');
+    $('locks').onclick = e => {
+      const it = e.target.closest('.pmItem'); if (it) { locks[it.dataset.k] = !locks[it.dataset.k]; render(); return; }
+      const b = e.target.closest('.pill'); if (!b) return;
+      if (e.target.closest('.car')) { const m = b.parentNode.querySelector('.pillMenu'); closeLockMenus(m); m.classList.toggle('hidden'); return; }
+      closeLockMenus(); toggleGroup(b.dataset.g);
+    };
+    document.addEventListener('pointerdown', e => { if (!e.target.closest('.pillBox')) closeLockMenus(); });
+    addEventListener('keydown', e => { if (e.key === 'Escape') closeLockMenus(); });
   }
   function syncLocks() {
     for (const g of GROUPS) {
@@ -233,6 +248,8 @@
         const b = row.querySelector('.lk'); b.dataset.l = locks[k] ? 1 : 0; b.innerHTML = locks[k] ? ICON_L : ICON_U;
       }
     }
+    for (const id of ADV_LOCKABLE) { const row = document.querySelector(`.row[data-a=${id}]`); if (row) row.classList.toggle('locked', !!locks[id]); }      // curseurs avancés verrouillés (violet, bloqués)
+    document.querySelectorAll('.pmItem').forEach(b => b.classList.toggle('on', !!locks[b.dataset.k]));      // cases des volets déroulants des pastilles
     $('vpsel').classList.toggle('locked', locks.vp);
     $('scrsel').classList.toggle('locked', locks.sw || locks.sh);
   }
@@ -302,7 +319,7 @@
     card.querySelector('.aimMini').onclick = () => { advToggled = true; S.aim = null; if (adv.trans || adv.rot) S.rot = G.autoAim(S); render(); };
 
     const byId = id => ADV_ROWS.find(r => r.id === id);
-    const apply = (r, v) => { const lim = r.lens && adv.src !== 'free' ? advSlider(r) : [-r.hard, r.hard]; r.set(Math.max(lim[0], Math.min(lim[1], v))); render(); };
+    const apply = (r, v) => { if (locks[r.id]) { lockMsg(r.id); render(); return; } const lim = r.lens && adv.src !== 'free' ? advSlider(r) : [-r.hard, r.hard]; r.set(Math.max(lim[0], Math.min(lim[1], v))); render(); };
     /* un appui sur le libellé d'un curseur le ramène à sa valeur par défaut : lens shift 0 %, pan / tilt = visée sur le centre de l'écran, roll 0°, throw offset = valeur de la fiche */
     const DEF = {
       sx: () => 0, sy: () => 0, roll: () => 0,
@@ -352,7 +369,7 @@
   /* Visée : automatique (centrée sur l'écran) tant que ni B ni C n'est cochée ; sinon orientation manuelle, figée à la première activation */
   /* vues de côté / dessus et curseurs x, y, z : le VP pivote pour continuer à viser le même point de l'écran
      (le centre de l'écran, ou le point où l'axe tombait après un réglage manuel dans la vue de face) */
-  function reaim() { if (S.rot) S.rot = { ...G.autoAim(S), roll: S.rot.roll || 0 }; }
+  function reaim() { if (S.rot) { const a = G.autoAim(S); S.rot = { pan: locks.pan ? S.rot.pan : a.pan, tilt: locks.tilt ? S.rot.tilt : a.tilt, roll: S.rot.roll || 0 }; } }      // pan / tilt verrouillés : ils ne suivent pas le VP
   function syncRot() {
     if (adv.trans || adv.rot) { if (!S.rot) S.rot = G.autoAim(S); }      // B ou C cochée : la visée est figée (réglage « brut »)
     else { S.rot = null; S.aim = null; }                                 // ni B ni C : visée automatique, le VP pivote pour garder le faisceau centré sur l'écran
@@ -399,20 +416,21 @@
     ['lens', 'Lens Shift', '<path opacity=".5" d="M8.5 9.5H7.3a1.8 1.8 0 0 0-1.8 1.8v3.9A1.8 1.8 0 0 0 7.3 17h6.4a1.8 1.8 0 0 0 1.8-1.8v-.9"/><rect x="8.5" y="6.8" width="10" height="7.5" rx="1.8"/><path d="M12 4.4V1.8M10.4 3.4 12 1.8l1.6 1.6M12 19.6v2.6M10.4 20.8 12 22.4l1.6-1.6M4.4 12H1.8M3.2 10.4 1.6 12l1.6 1.6M19.6 12h2.6M20.8 10.4 22.4 12l-1.6 1.6"/>', '#0fbcd6'],
     ['trans', 'Translation', '<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>', '#0fd683'],
     ['rot', 'Rotation', '<circle cx="12" cy="12" r="9.5"/><ellipse cx="12" cy="12" rx="4.4" ry="9.5"/><path d="M2.5 12A9.5 4 0 0 1 9.6 8.2M21.5 12A9.5 4 0 0 0 14.4 8.2M2.5 12A9.5 4 0 0 0 9.6 15.8M21.5 12A9.5 4 0 0 1 14.4 15.8"/><path fill="currentColor" stroke-width=".6" d="M11.2 7.9 14.6 6.3v3.2zM12.8 16.1 9.4 14.5v3.2z"/>', '#d6620f'],
-    ['zoom', 'Zoom', '<circle cx="12" cy="12" r="9.5"/><path d="M8.7 17.6V9.2M15.3 6.4v8.4"/><path fill="currentColor" stroke-width=".8" d="M8.7 5.4 5.6 9.4h6.2zM15.3 18.6l-3.1-4h6.2z"/>', '#f2c94c']];
+    ['zoom', 'Zoom', '<circle cx="12" cy="12" r="9.5"/><path d="M8.6 8.6h6.8l-6.8 6.8h6.8"/>', '#f2c94c']];
   const dragMode = () => adv.drag && adv[adv.drag] && (adv.drag !== 'zoom' || vpOf().zoomable) ? adv.drag : null;   // option agissant au glisser : une seule, toujours cochée, ou aucune
   let dmT = 0, rollMode = false;                               // rollMode : le glisser (point orange au-dessus de la flèche du haut, ou poignée du faisceau) ne pilote que le roll
   /* « Recul (y) est verrouillé » : indique quel(s) paramètre(s) verrouillé(s) on a tenté de modifier */
-  const LOCK_NAMES = { vp: ['Projecteur', 0], sw: ['Largeur de l’écran', 1], sh: ['Hauteur de l’écran', 1], y: ['Recul (y)', 0], x: ['Centrage (x)', 0], z: ['Hauteur (z)', 1], zoom: ['Zoom', 0] };      // [nom, féminin ?]
+  const LOCK_NAMES = { vp: ['Projecteur', 0], sw: ['Largeur de l’écran', 1], sh: ['Hauteur de l’écran', 1], y: ['Recul (y)', 0], x: ['Centrage (x)', 0], z: ['Hauteur (z)', 1], zoom: ['Zoom', 0],
+    pan: ['Pan', 0], tilt: ['Tilt', 0], roll: ['Roll', 0], sdx: ['Décalage x de l’écran', 0], sdy: ['Décalage y de l’écran', 0], sdz: ['Décalage z de l’écran', 0], syaw: ['Lacet de l’écran', 0], spitch: ['Tangage de l’écran', 0], sroll: ['Roulis de l’écran', 0] };      // [nom, féminin ?]
   function lockMsg(...keys) {
     const ks = [...new Set(keys)].filter(k => locks[k] && LOCK_NAMES[k]);
     if (!ks.length) return;
     const fem = ks.every(k => LOCK_NAMES[k][1]), names = ks.map(k => LOCK_NAMES[k][0]);
     dragMsg(ks.length === 1 ? `${names[0]} est verrouillé${fem ? 'e' : ''}` : `${names.slice(0, -1).join(', ')} et ${names[names.length - 1]} sont verrouillé${fem ? 'e' : ''}s`, true);
   }
-  function dragMsg(text, lock) {        /* petit message centré sous les icônes de la vue de face */
+  function dragMsg(text, lock, ms = 2800) {        /* petit message centré sous les icônes de la vue de face (ms : durée d'affichage) */
     const m = $('dragSel').querySelector('.dmsg'); if (!m) return; m.textContent = text; m.classList.add('show'); m.classList.toggle('lock', !!lock);
-    clearTimeout(dmT); dmT = setTimeout(() => m.classList.remove('show'), 2800);
+    clearTimeout(dmT); dmT = setTimeout(() => m.classList.remove('show'), ms);
   }
   function drawDragSel(r) {
     const cur = dragMode(), box = $('dragSel');
@@ -431,7 +449,7 @@
       if (k === 'rot' && rollMode) b.classList.add('roll');
       if (k === 'zoom') {                                   // flèches jaunes (0, 1 ou 2 par sens) selon la course restante
         const lvl = r => locks.zoom || r <= 0 ? 0 : r < 0.5 ? 1 : 2;
-        b.dataset.zu = lvl(S.zoom / 100); b.dataset.zd = lvl((100 - S.zoom) / 100);
+        b.dataset.zu = lvl((100 - S.zoom) / 100); b.dataset.zd = lvl(S.zoom / 100);      // flèches du haut : course restante vers un zoom % plus élevé ; du bas : vers un zoom % plus faible
       }
     });
     $('refSel').dataset.r = adv.ref;
@@ -442,9 +460,10 @@
   function attachFaceDrag() {
     const box = $('dragSel'), fsvg = $('svgFace'); let st0 = null, p0 = null, F = null, moved = false, dotTap = null;      // dotTap : appui sur le point roll (simple appui = bascule, glisser = roll)
     const begin = (e, k, freezeFace) => {
-      const ok = lastR && lastR.valid && fsvg._F;
-      F = fsvg._F; p0 = [e.clientX, e.clientY]; moved = false;
-      if (ok && freezeFace) frozen.svgFace = F;          /* glisser le cercle : le repère de la vue de face reste figé sous le doigt (pas avec les icônes) */
+      const ok = lastR && lastR.valid && (in3d() || fsvg._F);
+      F = in3d() ? { k: View3D.scale() } : fsvg._F;                 // page 3D : les icônes sont dans la scène, l'échelle est celle de la scène (pixels par mètre au niveau de l'écran)
+      p0 = [e.clientX, e.clientY]; moved = false;
+      if (ok && freezeFace && !in3d()) frozen.svgFace = F;          /* glisser le cercle : le repère de la vue de face reste figé sous le doigt (pas avec les icônes) */
       const q = ok ? lastR.q : null;
       dragNow = k; render();
       st0 = {
@@ -458,13 +477,13 @@
       if (!moved && Math.hypot(px, py) < 6) return;
       moved = true;
       if (!st0.ok || !F) return;
-      const g = adv.ref === 'vp' ? -1 : 1;                 // référence VP : la main tient l'écran, qui bouge par rapport au faisceau fixe → effet inverse sur le faisceau
+      const g = !in3d() && adv.ref === 'vp' ? -1 : 1;                 // référence VP : la main tient l'écran, qui bouge par rapport au faisceau fixe → effet inverse sur le faisceau
       const dx = g * px / F.k, dz = -g * py / F.k, cl = (v, [a, b]) => Math.max(a, Math.min(b, v));       // pixels → mètres dans le plan de la vue
       /* (ds, dt) = déplacement du faisceau dans le plan de l'écran. Écran droit ou Vue écran : c'est (dx, dz).
          Écran déplacé en Vue salle : le doigt déplace dans le plan x–z de la salle ; on cherche le déplacement dans le plan de l'écran qui s'y projette (même x et z, y libre). */
       let ds = dx, dt = dz;
       const fr = st0.frame;
-      if (fr && faceView === 'room') {
+      if (fr && faceView === 'room' && !in3d()) {      // (page 3D : le glisser se lit toujours dans le plan de l'écran, comme en Vue écran)
         const n = fr.normal;
         if (Math.abs(n[1]) < 0.05) { dragMsg('Écran vu de profil : glisser indisponible dans cette vue, utiliser Vue écran ou les curseurs'); return; }
         const v = [dx, -(n[0] * dx + n[2] * dz) / n[1], dz];
@@ -473,8 +492,8 @@
       if (st0.m === 'lens') {
         const lh = adv.src === 'free' ? [-5, 5] : lensRange('h'), lv = adv.src === 'free' ? [-5, 5] : lensRange('v');
         S.sx = Math.round(cl(st0.sx + ds / st0.Wb, lh) * 200) / 200; S.sy = Math.round(cl(st0.sy + dt / st0.Hb, lv) * 200) / 200;
-      } else if (st0.m === 'zoom') {                                       // glisser vers la droite = faisceau plus grand (zoom % plus faible)
-        if (locks.zoom) { if (Math.abs(px) > 4) lockMsg('zoom'); } else S.zoom = clampP('zoom', Math.round(st0.zoom - px * 0.5));
+      } else if (st0.m === 'zoom') {                                       // glisser vers le haut = zoom % plus élevé (faisceau plus petit) ; vers le bas = zoom % plus faible (faisceau plus grand)
+        if (locks.zoom) { if (Math.abs(py) > 4) lockMsg('zoom'); } else S.zoom = clampP('zoom', Math.round(st0.zoom - py * 0.5));
       } else if (st0.m === 'trans' && fr) {                                // écran déplacé : le VP glisse parallèlement à l'écran (le faisceau suit exactement le doigt), donc x, y et z peuvent changer
         const nw = [0, 1, 2].map(i => fr.right[i] * ds + fr.up[i] * dt), lk = [];
         ['x', 'y', 'z'].forEach((k, i) => { if (!locks[k]) S[k] = clampP(k, Math.round((st0[k] + nw[i]) * 100) / 100); else if (Math.abs(nw[i]) > 0.02) lk.push(k); });
@@ -501,7 +520,9 @@
       adv.ref = { vp: 'ecran', ecran: 'auto', auto: 'vp' }[adv.ref]; render();
     };      /* VP → écran → auto → VP */
     box.addEventListener('click', e => {      /* mire : la visée revient au centre de l'écran (comme « Viser le centre de l'écran » de l'option C) */
-      if (!e.target.closest('.aimBtn') || e.target.closest('.aimBtn.idle')) return;
+      const aim = e.target.closest('.aimBtn'); if (!aim) return;
+      if (in3d()) dragMsg(aim.dataset.t, false, 2000);                // page VP : l'appui affiche toujours le nom du bouton (2 s), même grisé
+      if (aim.classList.contains('idle')) return;
       S.aim = null; if (adv.trans || adv.rot) S.rot = G.autoAim(S); render();
     });
     box.ondblclick = e => { if (e.target.closest('.rollDot')) return; const b = e.target.closest('button[data-m]'); if (b) { setOpt(b.dataset.m, false); render(); } };
@@ -514,6 +535,7 @@
       const b = e.target.closest('button[data-m]'); if (!b) return;
       e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (_) { /* pointeur synthétique */ }
       const k = b.dataset.m;
+      if (in3d()) dragMsg((DRAG_OPTS.find(o => o[0] === k) || [])[1] || k, false, 2000);      // page VP : l'appui affiche toujours le nom du bouton (2 s), actif ou non
       rollMode = false;                                           // depuis l'icône : pan / tilt (ou le mouvement de l'icône)
       if (k === 'zoom' && !vpOf().zoomable) { dragMsg('Focale fixe : zoom indisponible pour ce VP'); return; }
       setOpt(k, true); adv.drag = k; render();
@@ -571,24 +593,24 @@
   }
   function statusHtml(r) {
     const v = verdict(r);
-    let html = `<div class="stat"><i style="background:${v.cover ? COVER_OK : COVER_BAD}"></i><span>${v.text}</span></div>`;
+    let html = `<div class="stat" data-kpi="couvert"><i style="background:${v.cover ? COVER_OK : COVER_BAD}"></i><span>${v.text}</span></div>`;
     if (r.valid) {
       const c = pxColor(r.px.lostPct);
-      html += `<div class="stat"><i style="background:${c}"></i><span>Pixels perdus : <b style="color:${c}">${fm(r.px.lostPct, 1)} %</b></span></div>`;
+      html += `<div class="stat" data-kpi="perdus"><i style="background:${c}"></i><span>Pixels perdus : <b style="color:${c}">${fm(r.px.lostPct, 1)} %</b></span></div>`;
     }
     return html;
   }
   let warns = [], warnOpen = false;
   /* affichage réglages : les autres indicateurs, sous forme de pastilles à la suite de l'état */
   function cfgInfoHtml(r) {
-    const pill = (c, label, val) => `<div class="stat"><i style="background:${c}"></i><span>${label} : <b>${val}</b></span></div>`;
-    return pill(COVER_OK, 'Pixels utiles', `${fm(r.px.usefulPct, 1)} % · ${fi(r.px.useful)} px`)
-      + pill('#3a4654', 'Ratio', fm(r.ratio) + ':1') + pill('#3a4654', 'Éclairement', fi(r.lux) + ' lx')
-      + pill('#3a4654', 'Forme', r.q.shape.split(' (')[0].replace('Quadrilatère quelconque', 'Quelconque'));
+    const pill = (k, c, label, val) => `<div class="stat" data-kpi="${k}"><i style="background:${c}"></i><span>${label} : <b>${val}</b></span></div>`;
+    return pill('util', COVER_OK, 'Pixels utiles', `${fm(r.px.usefulPct, 1)} % · ${fi(r.px.useful)} px`)
+      + pill('ratio', '#3a4654', 'Ratio', fm(r.ratio) + ':1') + pill('lux', '#3a4654', 'Éclairement', fi(r.lux) + ' lx')
+      + pill('forme', '#3a4654', 'Forme', r.q.shape.split(' (')[0].replace('Quadrilatère quelconque', 'Quelconque'));
   }
   function drawStatus(r) {
     const n = warns.length;
-    $('status').innerHTML = statusHtml(r) + (r.valid && $('p-calc').classList.contains('cfg') ? cfgInfoHtml(r) : '') + (n ? `<button class="stat warnPill ${warnOpen ? 'open' : ''}" id="warnBtn"><i></i><span>${n} alerte${n > 1 ? 's' : ''}</span></button>` : '');
+    $('status').innerHTML = statusHtml(r) + (r.valid && ($('p-calc').classList.contains('cfg') || $('p-calc').classList.contains('m3c')) ? cfgInfoHtml(r) : '') + (n ? `<button class="stat warnPill ${warnOpen ? 'open' : ''}" id="warnBtn"><i></i><span>${n} alerte${n > 1 ? 's' : ''}</span></button>` : '');
     const box = $('warnBox'); box.classList.toggle('hidden', !n || !warnOpen);
     box.innerHTML = warnOpen ? warns.map(w => `<div><span>${w.text}</span>${w.key ? `<small>${({ sx: 'Lens shift H', sy: 'Lens shift V', lensSrc: 'Lens shift', oy: 'Throw offset', pan: 'Pan', tilt: 'Tilt', roll: 'Roll' })[w.key]}</small>` : ''}</div>`).join('') : '';
   }
@@ -769,18 +791,19 @@
   function drawFace(r) {
     const svg = $('svgFace'); svg.closest('.card').classList.toggle('covered', !!(r.valid && r.covered));      // écran couvert : contour de la vue de face en vert
     if (!r.valid) { svg.replaceChildren(); return; }
+    const simple = in3d();                                                                                      // page 3D : la vue de face se limite à l'écran, au faisceau et au VP
     const room = r.frame && faceView === 'room', G3 = room ? roomGeo(r) : null, pf = p => [p[0], p[2]];      // « Vue salle » : projection orthogonale sur le plan x–z de la salle
     const Q = room ? G3.quad.map(pf) : r.B.quad, SC = room ? G3.scr.map(pf) : [[-S.sw / 2, S.sh], [S.sw / 2, S.sh], [S.sw / 2, 0], [-S.sw / 2, 0]];
-    const IN = room ? G3.inter.map(pf) : r.ov.inter, AIM = room ? pf(G3.T) : [r.B.T[0], r.B.T[2]], CEN = room ? pf(G3.cen) : r.q.centroid, SCC = room ? pf(G3.mid) : [0, S.sh / 2], VPp = room ? [S.x, S.z] : null;
+    const IN = room ? G3.inter.map(pf) : r.ov.inter, AIM = room ? pf(G3.T) : [r.B.T[0], r.B.T[2]], CEN = room ? pf(G3.cen) : r.q.centroid, SCC = room ? pf(G3.mid) : [0, S.sh / 2], VPp = room ? [S.x, S.z] : simple && !r.frame ? [S.x, S.z] : null;
     const xs = Q.concat(SC, VPp ? [VPp] : []).map(p => p[0]), ys = Q.concat(SC, VPp ? [VPp] : []).map(p => p[1]);
     let [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-    if (!isThumb(svg) && !$('p-calc').classList.contains('cfg')) y1 += (isBig(svg) ? 0.3 : 0.2) * (y1 - y0);      // réserve de la place en haut pour les icônes de mouvement (en petit elles sont en bas à gauche)
+    if (!isThumb(svg) && !simple && !$('p-calc').classList.contains('cfg')) y1 += (isBig(svg) ? 0.3 : 0.2) * (y1 - y0);      // réserve de la place en haut pour les icônes de mouvement (en petit elles sont en bas à gauche)
     if (adv.ref !== 'auto') {      /* référence VP : le faisceau reste au centre de la vue, l'écran bouge · référence écran : l'écran reste au centre, le faisceau bouge */
       const c = adv.ref === 'vp' ? CEN : SCC;
       const hx = Math.max(c[0] - x0, x1 - c[0]), hy = Math.max(c[1] - y0, y1 - c[1]);
       [x0, x1, y0, y1] = [c[0] - hx, c[0] + hx, c[1] - hy, c[1] + hy];
     }
-    const adj = !isThumb(svg) && !$('p-calc').classList.contains('cfg');                    // icônes d'affichage présentes (pas en petite vue ni en vue compacte)
+    const adj = !isThumb(svg) && !simple && !$('p-calc').classList.contains('cfg');                    // icônes d'affichage présentes (pas en petite vue ni en vue compacte)
     const mBot = adj ? 112 : undefined;                                                     // marge basse : icônes d'affichage + « Référence = »
     let pad;
     if (adj && fv.manual) {                                                                 // vue manuelle : centre et échelle imposés
@@ -800,26 +823,26 @@
     svg.append(el('polygon', { points: pts(F, Q), fill: 'rgba(62,207,142,.42)', 'clip-path': 'url(#scrClip)' })); // faisceau ∩ écran (utile)
     svg.append(el('polygon', { points: pts(F, SC), fill: 'none', stroke: lvl === 'bad' ? SCREEN_RED : COL[lvl], 'stroke-width': 3 }));      // écran non couvert : rouge vif ; couvert : vert
     svg.append(el('polygon', { points: pts(F, Q), fill: 'none', stroke: '#4da3ff', 'stroke-width': 2, class: 'bglow' }));
-    ['A', 'B', 'C', 'D'].forEach((n, i) => {
+    if (!simple) ['A', 'B', 'C', 'D'].forEach((n, i) => {
       const p = Q[i], ox = i === 0 || i === 3 ? -12 : 12, oy = i < 2 ? -8 : 16;
       svg.append(el('circle', { cx: F.X(p[0]), cy: F.Y(p[1]), r: 3.5, fill: '#4da3ff' }));
       svg.append(el('text', { x: F.X(p[0]) + ox, y: F.Y(p[1]) + oy, 'text-anchor': 'middle', fill: '#9cc9ff', 'font-size': 13, 'font-weight': 700 }, n));
     });
     const cx = F.X(AIM[0]), cy = F.Y(AIM[1]);                                                                   // point visé par l'axe optique
-    svg.append(el('path', { d: `M${cx - 7},${cy}H${cx + 7}M${cx},${cy - 7}V${cy + 7}`, stroke: '#fff', 'stroke-width': 1.5, opacity: .7 }));
+    if (!simple) svg.append(el('path', { d: `M${cx - 7},${cy}H${cx + 7}M${cx},${cy - 7}V${cy + 7}`, stroke: '#fff', 'stroke-width': 1.5, opacity: .7 }));
     if (VPp) svg.append(el('rect', { x: F.X(VPp[0]) - 8, y: F.Y(VPp[1]) - 6, width: 16, height: 12, rx: 2, fill: '#4da3ff' }));      // Vue salle : le VP, vu de face
-    if (sW > 130 && sy > 34) {
+    if (!simple && sW > 130 && sy > 34) {
       const t = el('text', { x: sx + sW / 2, y: sy - 8, 'text-anchor': 'middle', fill: '#e8edf2', 'font-size': 13 });       // largeur et hauteur de l'écran : violet si verrouillées
       const both = locks.sw && locks.sh;                                                      // écran entièrement verrouillé : « 4,00 × 2,25 m » en entier en violet ; une seule dimension verrouillée : seul son nombre
       [[fm(S.sw), 'sw'], [' × ', null], [fm(S.sh), 'sh'], [' m', null]].forEach(([txt, k]) => { const ts = el('tspan', (k && locks[k]) || both ? { fill: LOCKC } : {}, txt); t.append(ts); });
       svg.append(t);
     }   // pas de cote si elle chevauche les lettres A/B ou le titre de la vue
-    if (!isThumb(svg)) {                                                                  // nom du VP, discret : au pied de l'écran, en bas à droite, à l'extérieur
+    if (!isThumb(svg) && !simple) {                                                       // nom du VP, discret : au pied de l'écran, en bas à droite, à l'extérieur
       const by = Math.max(sy + sH, F.Y(Math.min(...ys)));                                 // sous l'écran et sous le faisceau (lettres A–D comprises)
       svg.append(el('text', isBig(svg) ? { x: sx + sW / 2, y: by + 17, 'text-anchor': 'middle', fill: pcol('vp', GREY), 'font-size': 12, 'font-weight': 600, opacity: .8, class: 'vpName' } : { x: sx + sW, y: by + 36, 'text-anchor': 'end', fill: pcol('vp', GREY), 'font-size': 12, 'font-weight': 600, opacity: .8, class: 'vpName' }, S.vp));      // violet si le projecteur est verrouillé
     }
     const dm = dragMode();
-    if (dm && !isThumb(svg)) {                                                       // poignée au centre de l'image : glisser = déplacer le faisceau
+    if (dm && !isThumb(svg) && !simple) {                                                       // poignée au centre de l'image : glisser = déplacer le faisceau
       const g = CEN, free = dm !== 'trans' || !locks.x || !locks.z || (r.frame && !locks.y), hx = F.X(g[0]), hy = F.Y(g[1]);
       svg.append(el('circle', { cx: hx, cy: hy, r: 17, fill: 'none', stroke: free ? DRAG_OPTS.find(o => o[0] === dm)[3] : '#b58cff', 'stroke-width': 1.5, 'stroke-dasharray': '3 3', opacity: .85, class: 'blink', 'pointer-events': 'none' }));
       if (free) svg.append(el('circle', { class: 'handle', cx: hx, cy: hy, r: 30, fill: 'transparent' }));
@@ -829,7 +852,7 @@
       ['A', 'B', 'C', 'D'].forEach((n, i) => val(svg, F.X(Q[i][0]) + inw[i][0] * 6, F.Y(Q[i][1]) + inw[i][1] * 16, `${fm(q.angles[n], 1)}°`, inw[i][0] > 0 ? 'start' : 'end', '#9cc9ff', 11));
       val(svg, sx + sW / 2, sy + sH + 4 + 16 * 1, `faisceau ${fm(q.widthTrap)} × ${fm(q.heightTrap)} m`, 'middle', '#9cc9ff', 12);
     }
-    if (dragNow) {
+    if (dragNow && !simple) {
       const o = DRAG_OPTS.find(o => o[0] === dragNow);      // nom du mouvement, tant que l'icône est tenue
       svg.append(el('text', { x: sx + sW / 2, y: Math.min(F.H - 8, sy + sH + (isThumb(svg) ? 44 : 24)), 'text-anchor': 'middle', fill: o[3], 'font-size': 14, 'font-weight': 700, stroke: '#0f1216', 'stroke-width': 4, 'paint-order': 'stroke' }, o[1]));
     }
@@ -1027,7 +1050,7 @@
       ['Éclairement', fi(r.lux), 'lx', '', ''],
       ['Forme', r.q.shape.split(' (')[0].replace('Quadrilatère quelconque', 'Quelconque'), '', 'shape', ''],
     ];
-    $('kpis').innerHTML = items.map(i => `<div class="kpi ${i[3]}"><small>${i[0]}</small><div class="kv"><div class="main"><b${i[5] ? ` style="color:${i[5]}"` : ''}>${i[1]}</b><span>${i[2]}</span></div>${i[3] === 'shape' ? '' : `<em>${i[4]}</em>`}</div></div>`).join('');      // titre en haut, contenu centré dans la case
+    $('kpis').innerHTML = items.map((i, n) => `<div class="kpi ${i[3]}" data-kpi="${['util', 'perdus', 'couvert', 'ratio', 'lux', 'forme'][n]}"><small>${i[0]}</small><div class="kv"><div class="main"><b${i[5] ? ` style="color:${i[5]}"` : ''}>${i[1]}</b><span>${i[2]}</span></div>${i[3] === 'shape' ? '' : `<em>${i[4]}</em>`}</div></div>`).join('');      // titre en haut, contenu centré dans la case
   }
 
   /* ---------- Rendu principal ---------- */
@@ -1077,7 +1100,7 @@
     PERF.m('champs'); syncLocks(); syncTouched(); drawAdv(); drawDragSel(r); drawDispSel(); drawDispViews(); syncAutoMsg(); PERF.m('réglages+icônes');
     drawStatus(r); PERF.m('drawStatus');
     lastR = r;
-    drawHud(); PERF.m('drawHud'); drawFace(r); PERF.m('drawFace'); drawSide(r); PERF.m('drawSide'); drawTop(r); PERF.m('drawTop'); simHlDraw(); drawKpis(r); PERF.m('drawKpis');
+    drawHud(); PERF.m('drawHud'); drawFace(r); PERF.m('drawFace'); drawSide(r); PERF.m('drawSide'); drawTop(r); PERF.m('drawTop'); if (in3d()) View3D.draw(); simHlDraw(); drawKpis(r); PERF.m('drawKpis');
     if ($('details').classList.contains('open')) { renderDetails(r); PERF.m('renderDetails'); } else if (sim.checks.length) { simSchedule(r); PERF.m('valeurs vertes (planifiées / exécutées)'); }      // valeurs désactivées (bouton vert) et panneau fermé : aucun calcul de détail, l'application ne fait que le dessin
     PERF.m('fin'); PERF.end();
   }
@@ -1224,7 +1247,8 @@
   /* Valeur verte / jaune cliquée : son trait (ou point, angle, surface) s'affiche en surbrillance dans les vues de face, de côté et de dessus. Un second appui, ou l'appui sur une autre valeur, la retire / la remplace. */
   /* Paramètre libre (« + » à droite des valeurs vertes) : on en choisit un dans Calculs détaillés (mode édition, seules les cases libres sont cochables) ; une fois validé, il s'affiche en rouge à droite des valeurs vertes (avec sa surbrillance), sans entrer dans la config. */
   let simPick = null;      // simPick : { sk } pendant le choix ; simProbe : { sk, snap } paramètre libre choisi
-  let simHl = null, simHlPrims = [], simHlLast = null;      // simHlLast : dernière valeur jaune montrée puis retirée, rappelable par la flèche jaune
+  let simHl = null, simHlPrims = [], simHlLast = null, simHl3 = null;      // simHl3 : la même surbrillance en primitives simples pour la vue 3D (view3d.js) : { frame: 'scr' (repère de l'écran, 2D) | 'world' (repère de l'écran à plat, 3D), items }
+       // simHlLast : dernière valeur jaune montrée puis retirée, rappelable par la flèche jaune
   let simTabMove = false;      // changement d'onglet / de ligne par les onglets : le x/x de la barre du haut suit la ligne sélectionnée si elle est dans la config
   let simFavOnly = false;      // étoile de la barre du haut de Calculs détaillés : n'afficher que les favoris (indépendant de la config « Favoris » du menu déroulant)
   const isFavRow = sk => !!sk && (simFavCfg.items.some(i => i.sk === sk) || (!!simProbe && simProbe.sk === sk));
@@ -1240,15 +1264,18 @@
     });
   }
   function simHlUpdate() {      // recalcule les traits de la valeur choisie (simIdx doit être à jour), puis les dessine
-    simHlPrims = [];
+    simHlPrims = []; simHl3 = null;
     if (simHl && (!simCfg.on || (!sim.checks.includes(simHl) && simHl !== simRedKey()))) simHl = null;
     if (simHl) {
       const o = simIdx.get(simHl) || {}, sn = sim.snap[simHl] || (simProbe && simProbe.sk === simHl ? simProbe.snap : ((simFavCfg.items.find(i => i.sk === simHl) || {}).snap || {})), hl = o.hl || sn.hl || [], rt = o.rt || sn.rt || [], one = !!o.one;
       const kind = vw => String(simHl).startsWith('vpe|') ? ['side', 'face', 'top'][vw || 0] : 'face';      // VP à écran : vues côté, face, dessus ; autres onglets : vue de face
       (one ? [hl[0]] : hl).filter(Boolean).forEach(p => simHlPrims.push({ p, kind: kind(p.vw) }));
       rt.filter(m => !one || m.pi === 0).forEach(m => simHlPrims.push({ p: m, kind: kind(m.vw) }));
+      if (String(simHl).startsWith('vpe|')) simHl3 = { frame: 'world', label: hlLabel(o, sn), items: [...(sn.hl3 || []).flatMap(hlNorm3), ...(sn.rt3 || []).map(m => ({ t: 'rt', c: m.c, u: m.u, v: m.v }))] };      // VP à écran : les traits d'origine, en 3D
+      else simHl3 = { frame: 'scr', label: hlLabel(o, sn), items: [...(one ? [hl[0]] : hl).filter(Boolean).flatMap(hlNorm), ...rt.filter(m => !one || m.pi === 0).map(m => ({ t: 'rt', c: m.c, u: m.u, v: m.v }))] };      // autres onglets : traits dans le repère de l'écran (vue de face)
     }
     simHlDraw();
+    if (in3d()) View3D.draw();
     document.querySelectorAll('.simItem').forEach(x => x.classList.toggle('simSel', x.dataset.k === simHl));
   }
   function renderSim(tabs) {
@@ -1373,6 +1400,7 @@
   }
   function paintSim(tog, first, all, red) {      // tog : bouton vert (dans la bande du haut ; repris dans les vues agrandies) ; first : valeurs de la vue principale ; all : valeurs de la vue compacte
     { const nm = (cfgOf(simCfg.current) || {}).name || ''; document.querySelectorAll('.cfgNm').forEach(e => { if (e.textContent !== nm) e.textContent = nm; }); }      // nom de la config active sous les switchs (hors Calculs détaillés)
+    if (window.Layout3D) Layout3D.simSwitch(simCfg.on);      // page VP : le bandeau données se déploie quand le switch passe sur ON
     const top = $('simTopTog'); if (top) { top.hidden = !tog; if (tog && !top.firstChild) top.innerHTML = simRound(false, true); if (tog) simOrbit(); top.classList.toggle('on', simCfg.on); top.setAttribute('aria-pressed', String(simCfg.on)); top.title = simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations'; }
     document.querySelectorAll('.viz .card').forEach(c => { if (!c.querySelector('.simFull')) { const d = document.createElement('div'); d.className = 'simFull'; c.append(d); } });
     document.querySelectorAll('.viz .card').forEach(c => {                                                   // vue agrandie : bouton vert placé au-dessus du bouton Auto (bas gauche) ; il n'est montré que dans la vue agrandie (CSS)
@@ -1509,7 +1537,7 @@
       if (i >= 0) it.splice(i, 1);
       if (live) { const at = sim.checks.indexOf(k); if (at >= 0) sim.checks.splice(at, 1); delete sim.names[k]; delete sim.snap[k]; simAcc.delete(k); }
     } else {
-      const snap = { name: row.n, val: String(row.val == null ? '' : row.val).replace(/<[^>]*>/g, ''), f: row.f, hl: row.hl, rt: row.rt, t: row.t };
+      const snap = { name: row.n, val: String(row.val == null ? '' : row.val).replace(/<[^>]*>/g, ''), f: row.f, hl: row.hl, rt: row.rt, hl3: row.hl3, rt3: row.rt3, t: row.t };
       if (String(k).startsWith('vpe|')) Object.assign(snap, { x: !!vpe.full, pts: vpe.pts.slice(), cust: vpe.custom.filter(c => vpe.pts.includes(c.id)).map(c => ({ ...c, p: c.p.slice() })) });
       it.push({ sk: k, label: simLabel(k) || row.n, name: sim.names[k] || '', snap });
       if (live && !inChecks) { sim.checks.push(k); sim.snap[k] = snap; }
@@ -1524,7 +1552,7 @@
     const k = simPick && simPick.sk; if (!k) return;
     const given = ((simPick.editing ? simPick.draft : simPick.name) || '').trim();      // nom donné avec le stylo (saisie en cours reprise telle quelle)
     const t = String(k).split('|')[0], r = G.compute(vpOf(), S), row = ((buildDetails(r)[t] || {}).rows || []).find(x => x.sk === k) || {}, o = simIdx.get(k) || {};
-    simProbe = { sk: k, custom: given, snap: { name: given || simNameOf(k) || o.name || row.n || String(k).split('|')[1] || k, val: o.val != null ? o.val : String(row.val == null ? '' : row.val).replace(/<[^>]*>/g, ''), hl: row.hl || o.hl, rt: row.rt || o.rt, one: !!(row.one || o.one) } };
+    simProbe = { sk: k, custom: given, snap: { name: given || simNameOf(k) || o.name || row.n || String(k).split('|')[1] || k, val: o.val != null ? o.val : String(row.val == null ? '' : row.val).replace(/<[^>]*>/g, ''), hl: row.hl || o.hl, rt: row.rt || o.rt, hl3: row.hl3 || o.hl3, rt3: row.rt3 || o.rt3, one: !!(row.one || o.one) } };
     simSave();      // le favori n°1 est mémorisé
     const back = simPick.fromPanel && simBackState, prefs = simPick.fromPrefs; simPick = null;
     if (prefs) { $('details').classList.remove('open'); $('detBtn').classList.remove('on'); simSetEdit(false); renderSimSettings(); return; }      // lancé depuis les Préférences : on y revient
@@ -2089,6 +2117,25 @@
   const dist2 = G.d2;
   const HL = '#ffd166', BIS_LEN = 3.5;      // BIS_LEN : longueur du trait de la bissectrice, en rayons de l'arc
   const span = p => { const a1 = Math.atan2(p.u1[1], p.u1[0]); let da = Math.atan2(p.u2[1], p.u2[0]) - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; return { a1, da, m: a1 + da / 2 }; };      // angle entre u1 et u2 : départ, ouverture, direction de la bissectrice
+  /* Surbrillance pour la vue 3D : chaque trait devient une primitive simple { t: seg | path | poly | diff | pt | rt } (arcs et bissectrices résolus en traits) */
+  function hlNorm(p) {                                           // trait d'une vue (coordonnées 2D du repère de l'écran)
+    if (p.k === 'seg') return [{ t: 'seg', a: p.a, b: p.b, ghost: !!p.ghost }];
+    if (p.k === 'path') return [{ t: 'path', p: p.p }];
+    if (p.k === 'poly') return [{ t: 'poly', p: p.p, fill: p.fill !== false }];
+    if (p.k === 'pt') return [{ t: 'pt', p: p.p, ring: !!p.ring }];
+    if (p.k === 'diff') return [{ t: 'diff', p: p.p, hole: p.hole, alpha: p.alpha || 0.3, holeStroke: !!p.holeStroke }];
+    if (p.k === 'arc') { const { a1, da } = span(p), path = []; for (let i = 0; i <= 16; i++) { const t = a1 + da * i / 16; path.push([p.c[0] + p.r * Math.cos(t), p.c[1] + p.r * Math.sin(t)]); } return [{ t: 'path', p: path }]; }
+    if (p.k === 'bis') { const { m } = span(p); return [{ t: 'seg', a: p.c, b: [p.c[0] + BIS_LEN * p.r * Math.cos(m), p.c[1] + BIS_LEN * p.r * Math.sin(m)], dash: true }]; }
+    return [];
+  }
+  const hlLabel = (o, sn) => String(o.val != null ? o.val : sn.val != null ? sn.val : '').replace(/<[^>]*>/g, '').trim();      // valeur de la ligne (sans mise en forme), écrite dans la vue 3D
+  function hlNorm3(g) {                                          // trait d'une ligne « VP à écran » (coordonnées 3D)
+    if (g.t === 'pt') return [{ t: 'pt', p: g.p, ring: true }];
+    if (g.t === 'seg') return [{ t: 'seg', a: g.a, b: g.b, ghost: !!g.ghost }];
+    if (g.t === 'path') return [{ t: 'path', p: g.p }];
+    if (g.t === 'poly') return [{ t: 'poly', p: g.p, fill: g.fill !== false }];
+    return [];
+  }
   function drawPrim(svg, F, p) {
     const a = { stroke: HL, 'stroke-width': 4, 'stroke-linecap': 'round' };
     if (p.k === 'seg') svg.append(el('line', { x1: F.X(p.a[0]), y1: F.Y(p.a[1]), x2: F.X(p.b[0]), y2: F.Y(p.b[1]), ...a, ...(p.ghost ? { 'stroke-width': 2.5, opacity: 0.6 } : {}) }));      // ghost : trait de repère (côtés d'un angle), plus discret et non cliquable
@@ -2480,13 +2527,14 @@
       const m3 = rtMarks(rw.geo, nV >= 3 ? PV.map((p, i) => [p, PV[(i + 1) % nV]]) : [], nV ? [0, 1, 2].map(k => PV.reduce((a, p) => a + p[k], 0) / nV) : null);
       const geo = rw.geo.filter(g => !(g.t === 'path' && m3.some(m => Math.hypot(m.c[0] - g.c[0], m.c[1] - g.c[1], m.c[2] - g.c[2]) < 1e-9)));      // angle strictement droit : le carré remplace l'arc
       const row = L(rw.n, rw.f, fvV(rw.val), geo.flatMap(g => KINDS.map((k, vi) => toViewV(g, k, vi)))); if (rw.cid) row.cid = rw.cid; row.d = rowHelp('vpe', rw.cat, rw.n);
+      row.hl3 = geo; row.rt3 = m3;                                                                           // traits d'origine (3D), pour la surbrillance dans la vue 3D
       row.rt = [];                                                                                          // angles droits (3D) projetés dans chaque vue ; on les omet quand un des côtés est vu presque de bout
       m3.forEach(m => KINDS.forEach((kd, vi) => {
         const f = proj[kd], c2 = f(m.c), d2 = w => { const q = f(m.c.map((x, k) => x + w[k])); return [q[0] - c2[0], q[1] - c2[1]]; }, u2 = d2(m.u), v2 = d2(m.v);
         if (Math.hypot(...u2) > 0.3 && Math.hypot(...v2) > 0.3) row.rt.push({ k: 'rt', c: c2, u: u2, v: v2, vw: vi, pi: m.pi });
       }));
       row.sk = skV(rw); rowsV.push(row);
-      { const sn = { hl: row.hl, rt: row.rt, t: row.t, val: row.val, x: !!rw.x, pts: vpe.pts.slice(), cust: vpe.custom.filter(c => vpe.pts.includes(c.id)).map(c => ({ ...c, p: c.p.slice() })) }; if (sim.checks.includes(row.sk)) sim.snap[row.sk] = { ...sim.snap[row.sk], ...sn }; if (simProbe && simProbe.sk === row.sk) simProbe.snap = { ...simProbe.snap, ...sn }; simFavCfg.items.forEach(fi => { if (fi.sk === row.sk) fi.snap = { ...fi.snap, ...sn }; }); }      // ligne cochée : son dessin est gardé avec sa valeur
+      { const sn = { hl: row.hl, rt: row.rt, hl3: row.hl3, rt3: row.rt3, t: row.t, val: row.val, x: !!rw.x, pts: vpe.pts.slice(), cust: vpe.custom.filter(c => vpe.pts.includes(c.id)).map(c => ({ ...c, p: c.p.slice() })) }; if (sim.checks.includes(row.sk)) sim.snap[row.sk] = { ...sim.snap[row.sk], ...sn }; if (simProbe && simProbe.sk === row.sk) simProbe.snap = { ...simProbe.snap, ...sn }; simFavCfg.items.forEach(fi => { if (fi.sk === row.sk) fi.snap = { ...fi.snap, ...sn }; }); }      // ligne cochée : son dessin est gardé avec sa valeur
     });
     /* Lignes conservées : recalculées en direct avec leurs propres points (mémorisés avec la ligne), même s'ils ne sont plus sélectionnés. Le calcul est refait une fois par jeu de points
        en remplaçant provisoirement la sélection ; il met à jour la copie (valeur, dessin) de chaque ligne cochée de ce jeu. */
@@ -2968,29 +3016,81 @@
   const titles = { calc: 'Calcul faisceau', vp: 'Vidéo-projecteurs', ecran: 'Écrans', set: 'Préférences' };
   $('nav').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
+    const key = b.dataset.p, page = key === '3d' ? 'calc' : key;      // « 2D » et « 3D » sont deux présentations de la même page Calcul (mêmes réglages, mêmes verrous)
     document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-    for (const p in titles) $('p-' + p).classList.toggle('hidden', p !== b.dataset.p);
-    $('title').textContent = titles[b.dataset.p];
-    const calc = b.dataset.p === 'calc';
+    for (const p in titles) $('p-' + p).classList.toggle('hidden', p !== page);
+    $('title').textContent = titles[page];
+    const calc = page === 'calc';
     $('title').style.display = calc ? 'none' : '';      // pas de titre sur la page Calcul
-    ['locks', 'auto', 'cfgBtn', 'calcWrap'].forEach(id => $(id).style.display = calc ? '' : 'none');
+    ['locks', 'auto', 'calcWrap'].forEach(id => $(id).style.display = calc ? '' : 'none');
+    $('cfgBtn').style.display = calc && key !== '3d' ? '' : 'none';      // pas de vue compacte en 3D
     if (!calc) $('details').classList.remove('open');
+    if (key === '3d') View3D.enter(); else View3D.leave();
     if (calc) { refreshVps(); render(); }
   };
+
+  /* ---------- Vue 3D : actions des poignées (view3d.js) ----------
+     Mêmes règles que les vues de côté / dessus et les curseurs : les verrous sont respectés, les valeurs bornées comme les curseurs, le VP garde sa visée
+     (reaim) quand il est déplacé. Orienter le VP coche « Rotation du VP » (orientation manuelle) ; déplacer ou orienter l'écran coche « Déplacer l'écran ». */
+  const r2 = (v, q) => Math.round(v * q) / q, wrap180 = a => ((a + 180) % 360 + 360) % 360 - 180, lim = (v, a, b) => Math.max(a, Math.min(b, v));
+  const ensureRotManual = () => { if (!adv.rot) { advToggled = true; setOpt('rot', true); } };
+  const ensureScrMoved = () => { if (!S.scr) { advToggled = true; S.scr = scrKeep || { dx: 0, dy: 0, dz: 0, yaw: 0, pitch: 0, roll: 0 }; Object.assign(fv, { mode: 'auto', manual: false }); } };
+  const api3d = {
+    S, G, locks, last: () => lastR, render: () => render(), hl: () => simHl3,      // hl : surbrillance jaune des valeurs vertes / favoris cliquées
+    isLocked: k => !!locks[k],
+    setLock(k, on) { if (on && (k === 'pan' || k === 'tilt' || k === 'roll')) ensureRotManual(); locks[k] = !!on; render(); },      // verrouiller pan / tilt / roll fige l'orientation actuelle (orientation manuelle)
+    moveVP(p) {                                                    // p = {x, y, z} (absolus) ; renvoie les paramètres verrouillés qu'on a voulu changer
+      const lk = [];
+      for (const k of ['x', 'y', 'z']) if (k in p) {
+        if (locks[k]) { if (Math.abs(p[k] - S[k]) > 0.05) lk.push(k); continue; }
+        S[k] = clampP(k, magnetKey(k, r2(p[k], 100), 0.06));
+      }
+      reaim(); render(); return lk;
+    },
+    rotVP(o) {                                                     // o = {pan, tilt, roll} (degrés, partiel) ; renvoie les paramètres verrouillés qu'on a voulu changer
+      ensureRotManual();
+      const R = { ...S.rot }, lk = [];
+      for (const [k, f] of [['pan', v => lim(r2(v, 10), -89, 89)], ['tilt', v => lim(r2(v, 10), -89, 89)], ['roll', v => r2(wrap180(v), 10)]]) if (k in o) {
+        if (locks[k]) { if (Math.abs(o[k] - (R[k] || 0)) > 0.5) lk.push(k); continue; }
+        R[k] = f(o[k]);
+      }
+      S.rot = R; render(); return lk;
+    },
+    moveScr(p) {                                                   // p = {dx, dy, dz} (absolus, mètres)
+      ensureScrMoved(); const lk = [];
+      for (const k of ['dx', 'dy', 'dz']) if (k in p) {
+        if (locks['s' + k]) { if (Math.abs(p[k] - S.scr[k]) > 0.05) lk.push('s' + k); continue; }
+        S.scr[k] = lim(r2(p[k], 100), -50, 50);
+      }
+      render(); return lk;
+    },
+    rotScr(o) {                                                    // o = {yaw, pitch, roll} (degrés, partiel)
+      ensureScrMoved(); const lk = [];
+      for (const [k, f] of [['yaw', v => r2(wrap180(v), 10)], ['pitch', v => lim(r2(v, 10), -90, 90)], ['roll', v => r2(wrap180(v), 10)]]) if (k in o) {
+        if (locks['s' + k]) { if (Math.abs(o[k] - S.scr[k]) > 0.5) lk.push('s' + k); continue; }
+        S.scr[k] = f(o[k]);
+      }
+      render(); return lk;
+    },
+  };
+  View3D.init(api3d);
+
   addEventListener('resize', render);
 
   buildParams(); buildLockPills(); syncRot();
   $('title').style.display = 'none';                 // page Calcul au démarrage
   attachDrag('svgSide', ['y', 'z']); attachDrag('svgTop', ['x', 'y']); renderSimHead(); renderSimSettings(); renderIoBoxes(); attachFaceDrag(); attachDisp(); attachDispView('dispSelSide', 'svgSide', false); attachDispView('dispSelTop', 'svgTop', true);
-  document.querySelectorAll('.expand').forEach(b => b.onclick = () => { const card = b.closest('.card'); if ($('p-calc').classList.contains('cfg')) { $('cfgBtn').click(); toggleFull(card, true); backToCompact = true; return; } toggleFull(card); });      // en vue compacte : on en sort, puis la vue passe en plein écran
+  document.querySelectorAll('.expand').forEach(b => b.onclick = () => { const card = b.closest('.card'); if (in3d()) { Layout3D.fullFrom(card); return; } if ($('p-calc').classList.contains('cfg')) { $('cfgBtn').click(); toggleFull(card, true); backToCompact = true; return; } toggleFull(card); });      // en vue compacte : on en sort, puis la vue passe en plein écran
   $('viz').addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) { locks[c.dataset.k] = !locks[c.dataset.k]; render(); } });
   addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.card.full').forEach(c => toggleFull(c, false)); });
   render();
-  /* aides de test : ?details=quad|pos|scr|px  ?auto=1  ?unlock=1  ?adv=lens,trans,rot,off  ?lens=sx,sy (en %)  ?pop=lens  ?scroll=1  ?simdrag=dx,dy (pixels, sur la poignée de la vue de face)  ?scr=dx,dy,dz,lacet,tangage,roulis  ?faceview=room|screen  ?src=free|std|maker  ?rot=pan,tilt,roll  ?warn=1 (ouvre la liste des alertes) */
+  /* aides de test : ?view=3d  ?mode=compact|full  ?details=quad|pos|scr|px  ?auto=1  ?unlock=1  ?adv=lens,trans,rot,off  ?lens=sx,sy (en %)  ?pop=lens  ?scroll=1  ?simdrag=dx,dy (pixels, sur la poignée de la vue de face)  ?scr=dx,dy,dz,lacet,tangage,roulis  ?faceview=room|screen  ?src=free|std|maker  ?rot=pan,tilt,roll  ?warn=1 (ouvre la liste des alertes) */
   const qs = new URLSearchParams(location.search);
   if (qs.get('dragnow')) { dragNow = qs.get('dragnow'); render(); }      // aide de test : affiche le nom du mouvement
   if (qs.get('open')) document.querySelectorAll('#params .card').forEach(c => c.classList.remove('collapsed'));      // aide de test : déploie tous les blocs
   if (qs.get('cfg')) $('cfgBtn').click();
+  if (qs.get('view') === '3d' || qs.get('mode')) document.querySelector('nav button[data-p="3d"]').click();      // ?view=3d : ouvre la page 3D
+  if (qs.get('mode')) Layout3D.setMode(qs.get('mode'), { main: qs.get('main') || 'v3d' });      // ?mode=compact|full (&main=face|side|top|v3d) : présentation de la page VP
   if (qs.get('unlock')) { Object.keys(locks).forEach(k => locks[k] = false); render(); }
   if (qs.get('auto')) { for (let i = 0; i < +qs.get('auto'); i++) $('auto').click(); }
   if (qs.get('adv')) qs.get('adv').split(',').forEach(id => { const c = $('adv_' + id); if (c) { c.checked = true; c.dispatchEvent(new Event('change')); } });

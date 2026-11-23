@@ -31,8 +31,16 @@
   </div>
   <div class="app">
     <nav id="nav">
-      <button data-p="calc" class="on" aria-label="VP" title="VP : modélisation"><svg class="vpIcon"
-          viewBox="0 0 44 40">
+      <button data-p="calc" class="on" aria-label="2D"
+        title="VP : modélisation 2D (vues de face, de côté et de dessus)"><svg class="vpIcon" viewBox="0 0 44 40">
+          <path d="M3 4 22 33 41 4" />
+          <path class="vpTop" d="M3 4H41" stroke="#54667a" stroke-width=".9" stroke-linecap="butt" />
+          <rect class="vpBase" x="16" y="29.5" width="12" height="9" rx="1.6" fill="#4da3ff" stroke="#4da3ff" />
+          <text x="22" y="19" text-anchor="middle" fill="currentColor" stroke="none" font-size="11.5" font-weight="800"
+            font-family="inherit">2D</text>
+        </svg></button>
+      <button data-p="3d" aria-label="VP" title="VP : modélisation (vue 3D, déplacer et orienter le VP et l'écran)"><svg
+          class="vpIcon" viewBox="0 0 44 40">
           <path d="M3 4 22 33 41 4" />
           <path class="vpTop" d="M3 4H41" stroke="#54667a" stroke-width=".9" stroke-linecap="butt" />
           <rect class="vpBase" x="16" y="29.5" width="12" height="9" rx="1.6" fill="#4da3ff" stroke="#4da3ff" />
@@ -89,6 +97,23 @@
           </div>
           <div class="toast" id="toast"></div>
         </div>
+        <!-- page VP : présentations (vue principale / compacte / vues élargies) et vues enregistrées par l'utilisateur, entre Auto et Calculs -->
+        <div class="m3modes" id="m3modes">
+          <button type="button" class="m3btn" data-m="normal"
+            title="Vue principale : la scène 3D et les fenêtres à droite">Vue principale</button>
+          <button type="button" class="m3btn" data-m="compact"
+            title="Vue compacte : les 4 fenêtres graphiques sur une ligne, réglages dessous">Vue compacte</button>
+          <button type="button" class="m3btn" data-m="full"
+            title="Vues élargies : une grande fenêtre et les autres en colonne">Vues élargies</button>
+          <button type="button" class="m3btn" data-m="max"
+            title="Plein écran : la vue 3D seule, au-dessus de tout ; les autres vues, réglages et affichage s'ouvrent dans des volets à droite">Plein
+            écran</button>
+          <div class="uvWrap" id="uvWrap">
+            <button type="button" class="m3btn" id="uvBtn" aria-haspopup="true" aria-expanded="false"
+              title="Vues enregistrées">Vue utilisateur ▾</button>
+            <div class="uvMenu" id="uvMenu" role="menu" hidden></div>
+          </div>
+        </div>
         <div class="hsp"></div>
         <button class="txtlink" id="cfgBtn" title="Vue compacte : vues en petit au-dessus, réglages sur 2 colonnes">vue
           compacte</button>
@@ -101,6 +126,52 @@
       </header>
 
       <section class="calc" id="p-calc">
+        <div class="stage3d" id="stage3d"></div>
+        <aside class="side3d" id="side3d">
+          <section class="win3d" id="win3dViews">
+            <div class="wh"><b>Vues</b>
+              <button type="button" class="wx" id="closeViews" aria-label="Replier la fenêtre des vues"
+                title="Replier">✕</button>
+            </div>
+            <div class="wb scroll" id="viewsBody">
+            </div>
+          </section>
+          <section class="win3d" id="win3dParams">
+            <div class="wh"><b>Réglages</b><button type="button" class="wx" id="closeParams"
+                aria-label="Replier la fenêtre des réglages" title="Replier">✕</button></div>
+            <div class="wb scroll" id="paramsBody"></div>
+          </section>
+          <section class="win3d" id="win3dDisp">
+            <div class="wh"><b>Affichage</b><button type="button" class="wx" id="closeDisp"
+                aria-label="Replier la fenêtre d'affichage" title="Replier">✕</button></div>
+            <div class="wb" id="dispBody">
+              <div class="dispBox" id="dispBox">
+                <div class="dsec">
+                  <h4>Scène 3D</h4>
+                  <div class="show3d" id="show3d"><button type="button" data-k="beam">Faisceau</button><button
+                      type="button" data-k="pos">Position VP</button><button type="button" data-k="ori">Orientation
+                      VP</button><button type="button" data-k="lens">Lens shift</button><button type="button"
+                      data-k="calc"
+                      title="Afficher dans la scène la valeur du paramètre touché dans la barre de valeurs (Calculs config / favoris)">Calcul
+                      config</button><button type="button" class="info3d" id="info3d"
+                      aria-label="Aide : gestes de la vue 3D" aria-pressed="false"
+                      title="Aide : gestes de la vue 3D">i</button></div>
+                </div>
+                <div class="dsec">
+                  <h4>Verrous</h4>
+                  <div class="locksHome" id="locksHome"></div>
+                </div>
+                <div class="dsec">
+                  <h4>Bandeau données</h4>
+                  <div class="kchk" id="kchk"><button type="button" data-kp="util">Pixels utiles</button><button
+                      type="button" data-kp="perdus">Pixels perdus</button><button type="button" data-kp="couvert">Écran
+                      couvert</button><button type="button" data-kp="ratio">Ratio</button><button type="button"
+                      data-kp="lux">Éclairement</button><button type="button" data-kp="forme">Forme</button></div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </aside>
         <div class="col params scroll" id="params"></div>
         <div class="col out">
           <div class="status" id="status"></div>
@@ -180,6 +251,13 @@
             </div>
           </div>
           <div class="simVals" id="simVals" hidden></div>
+          <div class="msg3d" id="msg3d"></div>
+          <div class="hint3d" id="hint3d"></div>
+          <div class="dataBand" id="dataBand">
+            <div class="dbIn" id="dbIn"></div>
+            <button type="button" class="dbTab" id="dbTab" aria-expanded="true" aria-label="Replier le bandeau données"
+              title="Replier le bandeau données">‹</button>
+          </div>
           <div class="results" id="kpis"></div>
         </div>
       </section>
@@ -215,6 +293,10 @@
   <script src="io.js"></script>
   <script src="parc.js"></script>
   <script src="screens.js"></script>
+  <script src="mosaic.js"></script>
+  <script src="layout3d.js"></script>
+  <script src="userviews.js"></script>
+  <script src="view3d.js"></script>
   <script src="app.js"></script>
 </body>
 
