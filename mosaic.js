@@ -4,6 +4,7 @@
    - Redimensionner : tirer le séparateur entre deux fenêtres voisines.
    - Déplacer : glisser la barre de titre. Déposer au centre d'une autre fenêtre = les deux échangent leur place ; déposer près d'un de ses bords
      = la fenêtre se glisse à côté (à gauche, à droite, au-dessus ou en dessous).
+   - Fenêtre `bare` : sans barre de titre, donc ni déplaçable ni échangeable (la fenêtre 3D de la vue principale, point d'ancrage des autres).
    - Fenêtre `rowable` : peut vivre dans la mosaïque ou ailleurs (une ligne de l'appelant) ; elle n'est donc jamais rangée dans `park` ; insert() l'y fait entrer,
      probe() / unprobe() montrent où elle atterrirait pendant que l'appelant la glisse, onDropOut() signale qu'elle a été lâchée en dehors.
    - Rétracter : une fenêtre `foldable` se réduit à sa barre de titre (fold / setFold), sans quitter la mosaïque ; ses voisines prennent la place.
@@ -23,6 +24,7 @@ function create(opts) {
   const host = opts.host, wins = opts.wins, park = opts.park || null, place = opts.place || null, onChange = opts.onChange || (() => {}), onAction = opts.onAction || (() => {});
   let tree = null, empty = null;
   const shells = {}, folded = opts.folded || {};                   // folded : fenêtres rétractées (objet partagé avec l'appelant, gardé d'une disposition à l'autre)
+  const edge = !!opts.edge, share = opts.share || (() => 0.5), onClose = opts.onClose || null;      // edge : lâcher près du bord extérieur place la fenêtre au-dessus / dessous / à gauche / à droite de l'ensemble ; share(id, cible, zone) : part de la cible (ou de l'ensemble) prise par la fenêtre qui arrive ; onClose(id) : appelé juste avant une fermeture
   const onDropOut = opts.onDropOut || null;                         // une fenêtre `rowable` lâchée hors de la mosaïque : l'appelant la range ailleurs
   host.classList.add('mz');
 
@@ -47,11 +49,12 @@ function create(opts) {
   function insertBeside(targetId, id, side) {                       // side : l, r, t, b
     const f = find(targetId); if (!f) return;
     const dir = side === 'l' || side === 'r' ? 'h' : 'v', before = side === 'l' || side === 't';
+    const sh = Math.max(0.1, Math.min(0.9, share(id, targetId, side)));
     if (f.p && f.p.dir === dir) {
-      const i = f.p.kids.indexOf(f.n), half = (f.n.w || 1) / 2; f.n.w = half;
-      f.p.kids.splice(before ? i : i + 1, 0, { id, w: half });
+      const i = f.p.kids.indexOf(f.n), w0 = f.n.w || 1, nw = w0 * sh; f.n.w = w0 - nw;
+      f.p.kids.splice(before ? i : i + 1, 0, { id, w: nw });
     } else {
-      const w = f.n.w || 1, wrap = { dir, w, kids: before ? [{ id, w: 1 }, { ...f.n, w: 1 }] : [{ ...f.n, w: 1 }, { id, w: 1 }] };
+      const w = f.n.w || 1, wrap = { dir, w, kids: before ? [{ id, w: sh }, { ...f.n, w: 1 - sh }] : [{ ...f.n, w: 1 - sh }, { id, w: sh }] };
       if (f.p) f.p.kids[f.p.kids.indexOf(f.n)] = wrap; else tree = wrap;
     }
   }
@@ -67,13 +70,24 @@ function create(opts) {
     else { tree = strip(tree, id); tree = flat(tree); insertBeside(targetId, id, zone); tree = flat(tree); }
     render();
   }
-  function close(id) { if (!find(id)) return; tree = flat(strip(tree, id)); render(); }
+  function moveRoot(id, zone) {                                    // près du bord extérieur : la fenêtre se place au-dessus / dessous / à gauche / à droite de l'ensemble
+    if (!find(id)) return;
+    tree = flat(strip(tree, id)); if (!tree) { tree = { id, w: 1 }; render(); return; }
+    const f = Math.max(0.1, Math.min(0.9, share(id, null, zone))), w = f / (1 - f), dir = zone === 'l' || zone === 'r' ? 'h' : 'v', before = zone === 'l' || zone === 't';
+    tree = flat({ dir, w: 1, kids: before ? [{ id, w }, { ...tree, w: 1 }] : [{ ...tree, w: 1 }, { id, w }] }); render();
+  }
+  function close(id) { if (!find(id)) return; if (onClose) onClose(id); tree = flat(strip(tree, id)); render(); }
   function open(id) {
     if (find(id)) return;
     if (!tree) tree = { id, w: 1 };
-    else if (place && place(tree, id)) { /* placée par l'appelant */ }
-    else if (isLeaf(tree)) tree = { dir: 'h', w: 1, kids: [{ ...tree, w: 1 }, { id, w: 1 }] };
-    else { const s = tree.kids.reduce((a, g) => a + (g.w || 1), 0) / tree.kids.length; tree.kids.push({ id, w: s || 1 }); }
+    else {
+      const r = place ? place(tree, id) : false;                      // place peut modifier l'arbre (vrai) ou en renvoyer un nouveau
+      if (r && r !== true) tree = r;
+      else if (!r) {
+        if (isLeaf(tree)) tree = { dir: 'h', w: 1, kids: [{ ...tree, w: 1 }, { id, w: 1 }] };
+        else { const s = tree.kids.reduce((a, g) => a + (g.w || 1), 0) / tree.kids.length; tree.kids.push({ id, w: s || 1 }); }
+      }
+    }
     tree = flat(tree); render();
   }
 
@@ -84,7 +98,7 @@ function create(opts) {
     el.dataset.w = id; el.classList.add('mw-' + id);
     const t = mk('mwt', 'b'); t.textContent = w.title; head.append(t, mk('mwsp', 'span'));
     el.append(head, body);
-    head.addEventListener('pointerdown', e => dragStart(e, id, head));
+    if (w.bare) el.classList.add('mwBare'); else head.addEventListener('pointerdown', e => dragStart(e, id, head));
     head.addEventListener('click', e => { const b = e.target.closest('button[data-k]'); if (!b) return; if (b.dataset.k === 'close') close(id); else if (b.dataset.k === 'fold') setFold(id, !folded[id]); else onAction(id, b.dataset.k); });
     return (shells[id] = { el, head, body, id });
   }
@@ -143,18 +157,28 @@ function create(opts) {
   function showMark(hit) {
     if (!mark) { mark = mk('mzMark'); document.body.append(mark); }
     if (!hit) { mark.style.display = 'none'; return; }
-    const r = hit.r, h = { l: [r.left, r.top, r.width / 2, r.height], r: [r.left + r.width / 2, r.top, r.width / 2, r.height], t: [r.left, r.top, r.width, r.height / 2], b: [r.left, r.top + r.height / 2, r.width, r.height / 2], c: [r.left, r.top, r.width, r.height] }[hit.zone];
+    const r = hit.r, h = hit.mark || { l: [r.left, r.top, r.width / 2, r.height], r: [r.left + r.width / 2, r.top, r.width / 2, r.height], t: [r.left, r.top, r.width, r.height / 2], b: [r.left, r.top + r.height / 2, r.width, r.height / 2], c: [r.left, r.top, r.width, r.height] }[hit.zone];
     Object.assign(mark.style, { display: 'block', left: h[0] + 'px', top: h[1] + 'px', width: h[2] + 'px', height: h[3] + 'px' });
     mark.dataset.z = hit.zone;
   }
   function zoneAt(x, y, exclude) {
+    if (edge) {                                                       // bande le long du bord extérieur de la mosaïque
+      const hr = host.getBoundingClientRect();
+      if (x >= hr.left && x <= hr.right && y >= hr.top && y <= hr.bottom) {
+        const d = { l: x - hr.left, r: hr.right - x, t: y - hr.top, b: hr.bottom - y }, z = Object.keys(d).reduce((m, q) => d[q] < d[m] ? q : m, 'l'), B = 0.28;
+        if (d[z] < 30) {
+          const mark = z === 'l' ? [hr.left, hr.top, hr.width * B, hr.height] : z === 'r' ? [hr.right - hr.width * B, hr.top, hr.width * B, hr.height] : z === 't' ? [hr.left, hr.top, hr.width, hr.height * B] : [hr.left, hr.bottom - hr.height * B, hr.width, hr.height * B];
+          return { id: null, root: true, zone: z, r: hr, mark };
+        }
+      }
+    }
     for (const k of ids()) {
       if (k === exclude) continue;
       const r = shell(k).el.getBoundingClientRect();
       if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue;
       const fx = (x - r.left) / r.width, fy = (y - r.top) / r.height, d = { l: fx, r: 1 - fx, t: fy, b: 1 - fy };
       const z = Object.keys(d).reduce((m, q) => d[q] < d[m] ? q : m, 'l');
-      return { id: k, zone: d[z] < .26 ? z : 'c', r };
+      return { id: k, zone: d[z] < .26 || wins[k].bare ? z : 'c', r };         // jamais d'échange avec une fenêtre sans titre : on se place à côté
     }
     return null;
   }
@@ -179,7 +203,7 @@ function create(opts) {
       if (ghost) ghost.remove(); hideMark(); document.body.classList.remove('mzDrag');
       const s = shells[id]; if (s) s.el.classList.remove('mwLift');
       if (!active || ev.type !== 'pointerup') return;
-      if (hit) move(id, hit.id, hit.zone);
+      if (hit) { if (hit.root) moveRoot(id, hit.zone); else move(id, hit.id, hit.zone); }
       else if (wins[id].rowable && onDropOut) onDropOut(id, ev.clientX, ev.clientY);
     };
     const esc = ev => { if (ev.key === 'Escape') { hit = null; end({ type: 'cancel' }); } };

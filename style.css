@@ -1364,20 +1364,20 @@ main.m3d header{position:absolute;top:0;left:0;right:var(--p3dw);z-index:12;bord
 main.m3d header>*{pointer-events:auto}
 main.m3d header .hsp{pointer-events:none}
 main.m3d .vsep{display:none}
-main.m3c,main.m3f{grid-template-rows:auto minmax(0,1fr)}
-main.m3c header,main.m3f header{position:relative;right:auto;background:none;border-bottom:1px solid var(--line);pointer-events:auto}
+main.m3n,main.m3c,main.m3f{grid-template-rows:auto minmax(0,1fr)}
+main.m3n header,main.m3c header,main.m3f header{position:relative;right:auto;background:none;border-bottom:1px solid var(--line);pointer-events:auto}
 .calc.m3d{grid-template-columns:minmax(0,1fr) var(--p3dw);grid-template-rows:minmax(0,1fr);gap:0;padding:0;position:relative;overflow:hidden}
-.calc.m3c,.calc.m3f{display:block}
+.calc.m3n,.calc.m3c,.calc.m3f{display:block}
 .calc.m3d .stage3d{display:block;grid-area:1/1;position:relative;min-width:0;min-height:0;overflow:hidden;background:#0c1014}
 .calc.m3d .side3d{display:flex;grid-area:1/2;flex-direction:row;min-width:0;min-height:0;background:var(--bg);border-left:1px solid var(--line)}
 main.m3d.p3off .calc.m3d .side3d{display:none}
-.calc.m3c .side3d{display:none}
+.calc.m3n .side3d,.calc.m3c .side3d{display:none}
 #cv3d{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
 
 /* pile posée sur la scène (dans la fenêtre 3D) : en haut les pastilles d'état et alertes, en bas (poussée par un ressort) message, indication, icônes, bandeau données.
    La marge de droite laisse la place à la barre caméra et aux onglets. */
 .calc.m3d .col.out{position:absolute;inset:var(--hdr3d) 44px 12px 12px;z-index:3;pointer-events:none;gap:8px;min-height:0;justify-content:flex-start}
-.calc.m3c .col.out,.calc.m3f .col.out{inset:var(--hdr3d) 12px 12px 12px}
+.calc.m3n .col.out,.calc.m3c .col.out,.calc.m3f .col.out{inset:var(--hdr3d) 12px 12px 12px}
 .calc.m3d .col.out>*{pointer-events:auto}
 .calc.m3d .col.out::after{content:"";order:1;flex:1 1 0;min-height:0}
 .calc.m3d .col.out .status,.calc.m3d .col.out .warnBox{order:0}
@@ -1443,14 +1443,14 @@ main.m3d.p3off .calc.m3d .side3d{display:none}
 
 /* raccourcis de caméra (en haut à droite de la scène ; visibles en mode caméra) et onglets verticaux des fenêtres (au bord droit, au milieu) */
 .tb3d{position:absolute;top:var(--hdr3d);right:44px;z-index:5;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.calc.m3c .tb3d,.calc.m3f .tb3d{right:10px}
+.calc.m3n .tb3d,.calc.m3c .tb3d,.calc.m3f .tb3d{right:10px}
 .pre3d{display:flex;flex-direction:column;gap:6px;align-items:stretch}
 .pre3d button{height:34px;min-width:76px;padding:0 12px;border-radius:999px;border:1.5px solid var(--line);background:rgba(23,28,34,.9);color:var(--txt);font-size:12.5px;font-weight:600;backdrop-filter:blur(6px)}
 .tabs3d{position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:5;display:flex;flex-direction:column;gap:6px}
 .tabs3d button{writing-mode:vertical-rl;width:28px;padding:12px 0;border-radius:10px 0 0 10px;border:1px solid var(--line);border-right:0;background:rgba(23,28,34,.92);color:var(--mut);font-size:12.5px;font-weight:600;letter-spacing:.04em}
 .tabs3d button.on{color:var(--acc);border-color:var(--acc);background:rgba(77,163,255,.14)}
 .calc.m3f .tabs3d [data-t=views]{display:none}
-.calc.m3c .tabs3d,.calc.m3f .tabs3d{display:none}
+.calc.m3n .tabs3d,.calc.m3c .tabs3d,.calc.m3f .tabs3d{display:none}
 .m3chip.m3sheet:not(.on){border-style:solid;opacity:1;color:var(--mut)}
 
 /* ----- présentations compacte et plein écran : racine, barre des fenêtres ----- */
@@ -1548,12 +1548,6 @@ body.mzDrag{cursor:grabbing;user-select:none;-webkit-user-select:none}
 .mw-data .stat i{width:10px;height:10px}
 .mw-data .warnBox{max-height:140px;overflow:auto}
 .mw-data .simVals{justify-content:flex-start}
-@media (max-width:900px),(orientation:portrait){
-  main.m3n,main.m3n.p3off{--p3dw:0px}
-  .calc.m3n{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,56%) minmax(0,1fr)}
-  main.m3n.p3off .calc.m3n{grid-template-rows:minmax(0,1fr) 0}
-  .calc.m3n .side3d{grid-area:2/1;border-left:0;border-top:1px solid var(--line)}
-  .calc.m3n .win3d{flex:1 1 0;width:auto}
 }
 
 /* volets déroulants des pastilles de verrous (app.js : buildLockPills) */
@@ -1607,3 +1601,49 @@ main.m3d .m3modes{display:flex}
 .calc.m3max .side3d .viz{display:none}
 .calc.m3max #viewsBody{display:flex;flex-direction:column;padding:8px;overflow:hidden}
 .calc.m3max #viewsBody .p3Col{flex:1;min-height:0}
+
+/* appui long sur un bouton de vue (1 s) : liseré qui se remplit, puis la disposition par défaut est rétablie */
+.m3modes .m3btn{position:relative;overflow:hidden;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+.m3modes .m3btn.holding::after{content:"";position:absolute;left:0;bottom:0;height:3px;background:var(--acc);animation:m3hold 1s linear forwards}
+@keyframes m3hold{from{width:0}to{width:100%}}
+.m3toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,12px);z-index:10001;padding:8px 16px;border-radius:999px;background:var(--acc);color:#04111f;font-weight:650;font-size:13.5px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+.m3toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ----- vue principale : la 3D et les fenêtres Vues / Réglages / Affichage en mosaïque (déplaçables, redimensionnables), onglets sur les bords ----- */
+.m3Bar[hidden]{display:none}
+.n3Wrap{flex:1;min-height:0;min-width:0;display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto minmax(0,1fr) auto}
+.n3Wrap[hidden]{display:none}
+.n3Wrap>.mzHost{grid-area:2/2}
+.n3St{display:flex;align-items:center;justify-content:center;gap:6px;z-index:5;min-width:0;min-height:0}
+.n3St:empty{display:none}
+.n3St-l{grid-area:2/1;flex-direction:column}
+.n3St-r{grid-area:2/3;flex-direction:column}
+.n3St-t{grid-area:1/2;flex-direction:row}
+.n3St-b{grid-area:3/2;flex-direction:row}
+.n3Tab{border:1px solid var(--line);background:rgba(23,28,34,.92);color:var(--mut);font-size:12.5px;font-weight:600;letter-spacing:.04em}
+.n3Tab.on{color:var(--acc);border-color:var(--acc);background:rgba(77,163,255,.14)}
+.n3Tab:hover{color:var(--acc)}
+.n3St-l .n3Tab,.n3St-r .n3Tab{writing-mode:vertical-rl;width:28px;padding:12px 0}
+.n3St-l .n3Tab{border-radius:0 10px 10px 0;border-left:0}
+.n3St-r .n3Tab{border-radius:10px 0 0 10px;border-right:0}
+.n3St-t .n3Tab,.n3St-b .n3Tab{height:28px;padding:0 14px}
+.n3St-t .n3Tab{border-radius:0 0 10px 10px;border-top:0}
+.n3St-b .n3Tab{border-radius:10px 10px 0 0;border-bottom:0}
+.n3Tab.n3Reset{writing-mode:horizontal-tb;width:28px;height:28px;padding:0;font-size:15px;letter-spacing:0;display:grid;place-items:center}
+.mwBare{border:0;border-radius:0;background:transparent}
+.mwBare>.mwh{display:none}
+/* les sections Vues / Réglages / Affichage vivent dans une fenêtre de la mosaïque : leur propre titre disparaît */
+.mw .win3d{width:auto;flex:1;min-height:0;border:0}
+.mw .win3d>.wh{display:none}
+.mw #win3dDisp{width:auto}
+.mw #win3dDisp .wb{overflow:auto}
+.mw .win3d .wb>.viz{flex:1 1 0;min-height:0}
+.mw .win3d .viz{flex-direction:column}
+.mw .win3d .viz.row{flex-direction:row}
+.mw .win3d .viz .card{flex:1 1 0;height:auto;min-height:110px;min-width:0;padding:0;overflow:hidden;border:1px solid var(--line);border-radius:var(--r);margin:0}
+.mw .win3d .viz .card.face{height:auto}
+.mw .win3d .viz .card .expand{display:block!important}
+.mw .win3d .viz .card .tag{font-size:11px;left:12px;top:10px}
+.n3Wrap .mw-disp .mwb{padding:0;overflow:hidden}
+.n3Wrap .mw-disp .dispBox{flex-direction:column;flex-wrap:nowrap;gap:16px}
+.n3Wrap .win3d.wide .dispBox{flex-direction:row;flex-wrap:wrap;gap:12px 36px;align-items:flex-start}
