@@ -38,7 +38,21 @@ let handles = [], pickVP = null, pickScr = null, lastG = null, dragLabel = null;
 const ptrs = new Map();
 let drag = null, moved = false, down0 = null, pend = null, raf = 0, tol = 10, mvTol = 4;
 const prefs = Object.assign({ show: { pos: false, ori: false, lens: false } }, (() => { try { return JSON.parse(localStorage.getItem('vp3d') || '{}'); } catch (_) { return {}; } })());
-prefs.show = Object.assign({ pos: false, ori: false, lens: false, beam: true, calc: true }, prefs.show);      // « afficher : » — le faisceau est actif par défaut
+/* Éléments d'affichage de chaque vue, réglés séparément (fenêtre Affichage) : prefs.show = { sel : vue en cours de réglage, v : { 3d, face, side, top } }.
+   Valeurs par défaut : la Vue 3D montre le faisceau, le calcul config et les boutons Réglages supplémentaires ; les vues de côté et de dessus gardent leurs cotes et leur faisceau habituels. */
+const VIEWS = ['3d', 'face', 'side', 'top'];
+const SHOW_DEF = { '3d': { beam: true, pos: false, ori: false, lens: false, calc: true, adv: true }, face: { pos: false, ori: false, lens: false, calc: false, adv: false },
+  side: { beam: true, pos: true, ori: false, lens: false, calc: false }, top: { beam: true, pos: true, ori: false, lens: false, calc: false } };
+function normShow(sh) {                                            // accepte aussi l'ancien format (un seul jeu d'éléments, pour la Vue 3D)
+  sh = sh || {}; const old = !sh.v, v = sh.v || {}, out = { sel: VIEWS.includes(sh.sel || sh.where) ? (sh.sel || sh.where) : '3d', v: {} };
+  for (const k of VIEWS) {
+    out.v[k] = { ...SHOW_DEF[k] };
+    for (const f in SHOW_DEF[k]) { const x = old ? (k === '3d' && (!sh.where || sh.where === '3d') ? sh[f] : undefined) : (v[k] || {})[f]; if (typeof x === 'boolean') out.v[k][f] = x; }
+  }
+  return out;
+}
+prefs.show = normShow(prefs.show);
+const shw = () => prefs.show.v['3d'];                              // éléments affichés dans la Vue 3D
 const savePrefs = () => { try { localStorage.setItem('vp3d', JSON.stringify(prefs)); } catch (_) { /* stockage indisponible */ } };
 
 /* ---------- Caméra ---------- */
@@ -137,7 +151,7 @@ function drawScene(g) {
   const items = [], S = g.S;
   pickVP = null; pickScr = null;
 
-  if (g.q && prefs.show.beam) {                                   // faisceau : pyramide (désactivé : ni remplissage bleu ni arêtes ; le cadre bleu du quadrilatère rouge reste) translucide du VP vers les 4 coins sur le plan de l'écran
+  if (g.q && shw().beam) {                                   // faisceau : pyramide (désactivé : ni remplissage bleu ni arêtes ; le cadre bleu du quadrilatère rouge reste) translucide du VP vers les 4 coins sur le plan de l'écran
     for (let i = 0; i < 4; i++) {
       const a = g.q[i], b = g.q[(i + 1) % 4], tri = [g.P, a, b];
       items.push({ d: depthOf(avg(tri)), paint() {
@@ -212,7 +226,7 @@ function drawPosition(g) {
 }
 /* valeurs affichées sur le graphique (boutons « afficher : »), sous le VP : une ligne par groupe, chaque valeur dans la couleur de son axe / cercle */
 function drawValues(g, p) {
-  const sh = prefs.show || {}; if (!p || !(sh.ori || sh.lens)) return;
+  const sh = shw(); if (!p || !(sh.ori || sh.lens)) return;
   const S = g.S, rot = S.rot || api.G.autoAim(S), lines = [];
   if (sh.ori) lines.push([['pan ', COL.grey], [fm(rot.pan, 1) + '°', COL.z], ['   tilt ', COL.grey], [fm(rot.tilt, 1) + '°', COL.x], ['   roll ', COL.grey], [fm(rot.roll || 0, 1) + '°', COL.y]]);
   if (sh.lens) lines.push([['lens shift  H ', COL.grey], [fm((S.sx || 0) * 100, 0) + ' %', '#0fbcd6'], ['   V ', COL.grey], [fm((S.sy || 0) * 100, 0) + ' %', '#0fbcd6']]);
@@ -255,7 +269,7 @@ function drawHighlight(g) {
       ctx.globalAlpha = .85; for (const [x, y] of [[a, b], [b, e]]) { const s = seg3(x, y); if (s) strokeSeg(s, '#fff', 1.6); } ctx.globalAlpha = 1;
     }
   }
-  if (prefs.show.calc && h.label) {                              // « Calcul config » : la valeur du paramètre touché, en jaune brillant, à l'endroit surligné
+  if (shw().calc && h.label) {                              // « Calcul config » : la valeur du paramètre touché, en jaune brillant, à l'endroit surligné
     const pts = h.items.filter(it => !it.ghost && !it.dash), first = k => pts.find(it => it.t === k);
     const it = first('seg') || first('poly') || first('diff') || first('path') || first('pt') || h.items[0];
     let a = null;
@@ -282,14 +296,14 @@ function drawLabels(g) {
   if (v[2] > NEAR) { const p = proj(v); text(S.vp || 'VP', p[0], p[1] - 6, '#9cc9ff', 12); }
   const b = cc(add(avg([g.sc[2], g.sc[3]]), mul(g.fr.up, -0.12)));
   if (b[2] > NEAR) { const p = proj(b); text(`Écran ${fm(S.sw)} × ${fm(S.sh)} m`, p[0], p[1] + 4, '#cfd8e2', 12); }
-  if (prefs.show && prefs.show.pos) drawPosition(g);
+  if (shw().pos) drawPosition(g);
   { const c = cc(g.bc); drawValues(g, c[2] > NEAR ? proj(c) : null); }
   if (g.T) { const m = cc(avg([g.P, g.T])); if (m[2] > NEAR) { const p = proj(m); text(`c ${fm(g.dist)} m`, p[0], p[1] - 10, '#ffd166', 12); } }
 }
 
 function bottomTop() {                                              // haut de la pile d'éléments posés en bas de la scène (indications, indicateurs, valeurs vertes), dans le repère du canvas
   const top0 = stage.getBoundingClientRect().top; let t = H - 8;
-  for (const id of ['msg3d', 'hint3d', 'dragSel', 'kpis', 'simVals']) { const e = $(id); if (e && stage.contains(e) && e.offsetParent && e.offsetHeight) t = Math.min(t, e.getBoundingClientRect().top - top0); }      // seulement ce qui est posé sur la scène (le bandeau données peut être ailleurs)
+  for (const id of ['msg3d', 'hint3d', 'dragSel3d', 'kpis', 'simVals']) { const e = $(id); if (e && stage.contains(e) && e.offsetParent && e.offsetHeight) t = Math.min(t, e.getBoundingClientRect().top - top0); }      // seulement ce qui est posé sur la scène (le bandeau données peut être ailleurs)
   return t;
 }
 function drawAxisWidget() {
@@ -666,18 +680,24 @@ function init(a) {
   cv.addEventListener('pointerdown', onDown); cv.addEventListener('pointermove', onMove); cv.addEventListener('pointerup', onUp); cv.addEventListener('pointercancel', onUp);
   cv.addEventListener('wheel', onWheel, { passive: false }); cv.addEventListener('contextmenu', e => e.preventDefault());
   $('pre3d').onclick = e => { const b = e.target.closest('button[data-pre]'); if (b) preset(b.dataset.pre); };
-  Layout3D.init({ render: () => { if (api) api.render(); }, getShow: () => ({ ...prefs.show }), setShow: sh => { prefs.show = { ...prefs.show, ...sh }; savePrefs(); syncShow(); draw(); } });
+  Layout3D.init({ render: () => { if (api) api.render(); }, getShow: () => JSON.parse(JSON.stringify(prefs.show)), setShow: sh => { prefs.show = normShow({ ...prefs.show, ...sh }); savePrefs(); syncShow(); if (api) api.render(); else draw(); } });
   const ib = $('info3d');
   if (ib) ib.onclick = () => { const h = $('hint3d'), on = !h.classList.contains('open'); h.classList.toggle('open', on); ib.setAttribute('aria-pressed', on); };      // « i » : affiche / masque l'aide des gestes
   const sb = $('show3d');
   if (sb) {
-    syncShow = () => sb.querySelectorAll('button[data-k]').forEach(b => b.classList.toggle('on', !!prefs.show[b.dataset.k]));
-    sb.onclick = e => { const b = e.target.closest('button[data-k]'); if (!b) return; prefs.show = { ...prefs.show, [b.dataset.k]: !prefs.show[b.dataset.k] }; savePrefs(); syncShow(); draw(); };
+    syncShow = () => {
+      const w = prefs.show.sel, f = prefs.show.v[w], c = $('p-calc');
+      sb.dataset.w = w; sb.querySelectorAll('button[data-k]').forEach(b => b.classList.toggle('on', !!f[b.dataset.k]));
+      $('vsel').querySelectorAll('button[data-w]').forEach(b => b.classList.toggle('on', b.dataset.w === w));
+      c.classList.toggle('noAdv3', !prefs.show.v['3d'].adv); c.classList.toggle('noAdvF', !prefs.show.v.face.adv);      // adv : boutons « Réglages supplémentaires », dans la scène 3D et / ou dans la vue de face
+    };
+    sb.onclick = e => { const b = e.target.closest('button[data-k]'); if (!b) return; const w = prefs.show.sel; prefs.show.v[w][b.dataset.k] = !prefs.show.v[w][b.dataset.k]; savePrefs(); syncShow(); if (api) api.render(); else draw(); };      // réglage de la vue choisie seulement ; les vues 2D se redessinent aussi
+    $('vsel').onclick = e => { const b = e.target.closest('button[data-w]'); if (!b || prefs.show.sel === b.dataset.w) return; prefs.show.sel = b.dataset.w; savePrefs(); syncShow(); };      // choisit la vue dont on règle les éléments
     syncShow();
   }
   if (typeof ResizeObserver !== 'undefined') {                      // la scène, la barre du haut et la pile du bas (indications, indicateurs, valeurs vertes) changent de taille : on recale la mise en page
     const ro = new ResizeObserver(() => { if (on) { Layout3D.vars(); draw(); } });
-    [stage, document.querySelector('main > header'), $('hint3d'), $('dragSel'), $('simVals'), $('kpis')].forEach(e => e && ro.observe(e));
+    [stage, document.querySelector('main > header'), $('hint3d'), $('dragSel3d'), $('simVals'), $('kpis')].forEach(e => e && ro.observe(e));
   }
   addEventListener('keydown', e => { if (!on || e.key !== 'Escape') return; if (camMode) setCamMode(false); else if (sel) { sel = null; draw(); } });
 }
@@ -685,5 +705,5 @@ function init(a) {
 /* pixels par mètre au niveau de l'écran (échelle des glissers depuis les icônes de la vue de face) */
 function scale() { if (!lastG) return 50; const d = cc(lastG.scC)[2]; return d > NEAR ? clamp(FPX / d, 8, 400) : 50; }
 
-root.View3D = { init, enter, leave, draw, scale, get active() { return on; } };
+root.View3D = { init, enter, leave, draw, scale, showFor: v => on ? prefs.show.v[v] : null, get active() { return on; } };
 })(window);

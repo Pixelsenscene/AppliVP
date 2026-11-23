@@ -448,7 +448,7 @@ function kick() {                                                           // l
 function init(callbacks) {
   if (inited) return; cb = callbacks;
   calc = $('p-calc'); main = document.querySelector('main'); stage = $('stage3d'); side = $('side3d'); colOut = document.querySelector('.col.out'); viz = $('viz'); params = $('params');
-  dispBox = $('dispBox'); locks = $('locks'); status = $('status'); warnBox = $('warnBox'); simVals = $('simVals'); kpis = $('kpis'); band = $('dataBand'); dbIn = $('dbIn'); dragSel = $('dragSel');
+  dispBox = $('dispBox'); locks = $('locks'); status = $('status'); warnBox = $('warnBox'); simVals = $('simVals'); kpis = $('kpis'); band = $('dataBand'); dbIn = $('dbIn'); dragSel = $('dragSel3d');
   cards = { face: viz.querySelector('.card.face'), side: viz.querySelector('.card.side'), top: viz.querySelector('.card.top') };
   home.locks = { parent: locks.parentNode, next: locks.nextSibling }; home.drag = { parent: dragSel.parentNode, next: dragSel.nextSibling };
 

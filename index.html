@@ -147,13 +147,17 @@
             <div class="wb" id="dispBody">
               <div class="dispBox" id="dispBox">
                 <div class="dsec">
-                  <h4>Scène 3D</h4>
+                  <h4 class="vsel" id="vsel"><button type="button" data-w="3d">Vue 3D</button><button type="button"
+                      data-w="face">De face</button><button type="button" data-w="side">de
+                      côté</button><button type="button" data-w="top">de dessus</button></h4>
                   <div class="show3d" id="show3d"><button type="button" data-k="beam">Faisceau</button><button
                       type="button" data-k="pos">Position VP</button><button type="button" data-k="ori">Orientation
                       VP</button><button type="button" data-k="lens">Lens shift</button><button type="button"
                       data-k="calc"
                       title="Afficher dans la scène la valeur du paramètre touché dans la barre de valeurs (Calculs config / favoris)">Calcul
-                      config</button><button type="button" class="info3d" id="info3d"
+                      config</button><button type="button" data-k="adv"
+                      title="Afficher les boutons « Viser le centre de l’écran », Lens shift, Translation, Rotation et Zoom">Réglages
+                      supplémentaires</button><button type="button" class="info3d" id="info3d"
                       aria-label="Aide : gestes de la vue 3D" aria-pressed="false"
                       title="Aide : gestes de la vue 3D">i</button></div>
                 </div>
@@ -253,6 +257,8 @@
           <div class="simVals" id="simVals" hidden></div>
           <div class="msg3d" id="msg3d"></div>
           <div class="hint3d" id="hint3d"></div>
+          <div class="dragSel" id="dragSel3d"></div>
+          <!-- boutons « Réglages supplémentaires » de la Vue 3D (ceux de la vue de face sont dans sa carte : #dragSel) -->
           <div class="dataBand" id="dataBand">
             <div class="dbIn" id="dbIn"></div>
             <button type="button" class="dbTab" id="dbTab" aria-expanded="true" aria-label="Replier le bandeau données"
