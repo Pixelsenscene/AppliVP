@@ -121,6 +121,10 @@ function create(opts) {
       s.el.classList.toggle('mwFold', !!folded[n.id]); s.el.style.flex = folded[n.id] ? '0 0 auto' : `${n.w || 1} 1 0px`; return s.el;
     }
     const box = mk('mzs mzs-' + n.dir); n.el = box; box.style.flex = `${n.w || 1} 1 0px`;
+    /* En flex, si la somme des « flex-grow » d'un groupe est inférieure à 1, ses fenêtres ne se partagent qu'une fraction de l'espace libre (un vide reste à côté). Les poids ne sont que des
+       proportions : on les ramène à une moyenne de 1, ce qui garde les rapports et remplit toujours tout l'espace (fenêtres fermées ou retirées d'un groupe comprises). */
+    const tot = n.kids.reduce((a, g) => a + (g.w || 1), 0) || 1, f = n.kids.length / tot;
+    if (Math.abs(f - 1) > 1e-9) n.kids.forEach(g => { g.w = (g.w || 1) * f; });
     n.kids.forEach((k, i) => { if (i) box.append(separator(n, i)); box.append(build(k)); });
     return box;
   }

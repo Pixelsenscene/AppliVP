@@ -1433,7 +1433,13 @@ main.m3d.p3off .calc.m3d .side3d{display:none}
 .win3d .viz .expand{width:28px;height:28px;top:5px;right:5px;border-radius:8px;font-size:13px;padding:0}
 .win3d .col.params{overflow:visible;flex:none;min-height:auto}
 .hide3d{display:none!important}
-.calc.m3d .viz .hud,.calc.m3d .viz .legend,.calc.m3d .card.face .dispSel,.calc.m3d .card.face .refSel{display:none!important}
+.calc.m3d .viz .hud:not(.on3),.calc.m3d .viz .legend,.calc.m3d .card.face .dispSel,.calc.m3d .card.face .refSel{display:none!important}
+/* barre HUD de la grande fenêtre (vues élargies, plein écran) : chips verrouillables x / y / z (seulement ceux de la vue) + zoom */
+.calc.m3d .hud.on3{display:flex;gap:8px;flex-wrap:wrap;position:absolute;z-index:3;left:12px;top:40px;right:60px;pointer-events:none}
+.calc.m3d .hud.on3 .hg{display:flex;gap:8px;flex-wrap:wrap}
+.calc.m3d .hud.on3 .chip{pointer-events:auto;height:30px;padding:0 11px;font-size:12.5px;gap:5px;cursor:pointer;background:rgba(23,28,34,.92)}
+.calc.m3d .hud.on3 .chip.lockd{background:var(--lock)}
+.calc.m3d .col.out .hud.on3{position:relative;left:auto;top:auto;right:auto;order:0;align-self:flex-start;pointer-events:auto}
 
 /* fenêtre AFFICHAGE : éléments de la scène 3D, verrous, cases du bandeau données */
 .dispBox{display:flex;flex-direction:column;gap:16px}
@@ -1476,6 +1482,8 @@ main.m3d.p3off .calc.m3d .side3d{display:none}
 .calc.m3f .f3Main .side3d{position:absolute;right:0;top:0;bottom:0;z-index:8;box-shadow:-10px 0 28px rgba(0,0,0,.45)}
 .calc.m3f .f3Main .win3d{width:min(var(--ww),86vw)}
 .calc.m3f .f3Main #win3dDisp{width:min(var(--wd),86vw)}
+.calc.m3f .f3Main .mw .win3d,.calc.m3f .f3Main .mw #win3dDisp{width:auto}      /* Réglages / Affichage chargées dans la mosaïque des vues élargies : elles prennent la taille de leur fenêtre (volets : plein écran seulement) */
+.calc.m3max .f3Wrap .n3St{display:none}                                          /* plein écran : pas d'onglets de bord, ce sont les volets */
 .calc.m3f .f3Main .tabs3d{right:var(--p3dw);z-index:9}
 
 /* fenêtres de la mosaïque */
@@ -1529,6 +1537,7 @@ body.mzDrag{cursor:grabbing;user-select:none;-webkit-user-select:none}
 .dataBox{display:flex;flex-direction:column;gap:8px;min-width:0}
 @keyframes mwFlash{0%{box-shadow:0 0 0 3px var(--acc)}100%{box-shadow:0 0 0 3px transparent}}
 .mwFlash{animation:mwFlash 1.1s ease-out}
+.mwFloat{position:relative;z-index:5;box-shadow:0 8px 22px rgba(0,0,0,.5);border-color:var(--acc)}      /* Réglages qui « saute » sous la ligne des vues pendant un glisser */
 .c3Gfx{flex:none;display:flex;flex-direction:column;min-width:0}
 .c3Gfx>.mzHost{flex:1;min-height:0}
 .c3Grip{flex:none;height:14px;cursor:row-resize;display:grid;place-items:center;touch-action:none}

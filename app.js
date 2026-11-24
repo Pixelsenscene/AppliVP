@@ -50,7 +50,8 @@
     rows = rows.filter(r => r.offsetParent); if (!rows.length) return;
     let box = rows[0].parentElement; while (box && !(box.scrollHeight > box.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
     if (!box) return;
-    const c = box === document.scrollingElement ? { top: 0, bottom: innerHeight } : box.getBoundingClientRect(), pad = 8;
+    const inset = window.Layout3D && Layout3D.scrollInset ? Layout3D.scrollInset(box) : 0;      // présentation compacte : la ligne des vues (épinglée, ou posée au-dessus de Réglages pendant un glisser) masque le haut de la zone
+    const c0 = box === document.scrollingElement ? { top: 0, bottom: innerHeight } : box.getBoundingClientRect(), c = { top: c0.top + inset, bottom: c0.bottom }, pad = 8;
     const fit = rs => { const rc = rs.map(r => r.getBoundingClientRect()); return [Math.min(...rc.map(r => r.top)), Math.max(...rc.map(r => r.bottom))]; };
     const need = (top, bottom) => top < c.top + pad ? top - c.top - pad : bottom > c.bottom - pad ? Math.min(bottom - c.bottom + pad, top - c.top - pad) : 0;      // défilement minimal, sans faire sortir le haut
     const [rTop, rBottom] = fit(rows), [cTop, cBottom] = fit([...new Set(rows.map(r => r.closest('.card') || r))]);
@@ -70,8 +71,10 @@
     if (hot && !gestureInParams && (!in3d() || viaBtn)) {                                                              // geste dans le panneau lui-même : on ne le fait pas bouger sous le doigt
       const rows = [...document.querySelectorAll('#params .row.hot')];
       if (viaBtn) rows.forEach(r => { const c = r.closest('.card.collapsed'); if (c) c.classList.remove('collapsed'); });      // bloc rétracté : on le déploie pour montrer le curseur
+      if (viaBtn && down.size && rows.some(r => r.offsetParent) && Layout3D.floatParams) Layout3D.floatParams(true);       // présentation compacte, geste en cours : Réglages saute sous la ligne des vues, le graphique manipulé reste visible
       revealRows(rows);
     }
+    if ((!hot || !down.size) && in3d() && Layout3D.floatParams) Layout3D.floatParams(false);                          // geste relâché : Réglages reprend sa place
   }
   const endGesture = () => { down.clear(); gestureInParams = false; gesture = false; clearTimeout(hotT); hot = false; syncTouched(); };
   document.addEventListener('pointerdown', e => { if (e.isPrimary) { down.clear(); gestureInParams = !!e.target.closest('#params'); } down.add(e.pointerId); if (down.size === 1) gesture = false; }, true);
@@ -557,9 +560,9 @@
     }
     fsvg.addEventListener('pointerdown', e => {
       const k = dragMode();
-      if (!k || !e.target.closest('.handle') || !lastR || !lastR.valid) return;
+      if (!k || !e.target.closest('.beamHandle') || !lastR || !lastR.valid) return;
       e.preventDefault(); try { fsvg.setPointerCapture(e.pointerId); } catch (_) { /* pointeur synthétique */ }
-      begin(e, k, false);       /* le cadrage suit la taille faisceau + écran pendant le glisser : rien ne sort de la vue */
+      begin(e, k, false, $('dragSel'));       /* (l'échelle est celle de la vue de face, aussi en page 3D) le cadrage suit la taille faisceau + écran pendant le glisser : rien ne sort de la vue */
     });
     for (const t of [...boxes, fsvg]) { t.addEventListener('pointermove', move); t.addEventListener('pointerup', end); t.addEventListener('pointercancel', end); }
   }
@@ -812,7 +815,7 @@
     const xs = Q.concat(SC, VPp ? [VPp] : []).map(p => p[0]), ys = Q.concat(SC, VPp ? [VPp] : []).map(p => p[1]);
     let [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
     if (!isThumb(svg) && !simple && !$('p-calc').classList.contains('cfg')) y1 += (isBig(svg) ? 0.3 : 0.2) * (y1 - y0);      // réserve de la place en haut pour les icônes de mouvement (en petit elles sont en bas à gauche)
-    if (adv.ref !== 'auto') {      /* référence VP : le faisceau reste au centre de la vue, l'écran bouge · référence écran : l'écran reste au centre, le faisceau bouge */
+    if (adv.ref !== 'auto' && !simple) {      /* (page 3D : pas de « Référence = », la vue reste en FIT pour que la poignée et le VP suivent le doigt) · référence VP : le faisceau reste au centre de la vue, l'écran bouge · référence écran : l'écran reste au centre, le faisceau bouge */
       const c = adv.ref === 'vp' ? CEN : SCC;
       const hx = Math.max(c[0] - x0, x1 - c[0]), hy = Math.max(c[1] - y0, y1 - c[1]);
       [x0, x1, y0, y1] = [c[0] - hx, c[0] + hx, c[1] - hy, c[1] + hy];
@@ -824,7 +827,8 @@
       const rc = svg.getBoundingClientRect(), W = rc.width || 400, H = rc.height || 300, hx = (W - 60) / (2 * fv.k), hy = (H - 30 - mBot) / (2 * fv.k);
       [x0, x1, y0, y1] = [fv.cx - hx, fv.cx + hx, fv.cy - hy, fv.cy + hy]; pad = 0;
     }
-    const F = viewFrame(svg, [x0, x1, y0, y1], pad, false, undefined, mBot);
+    const hudF = simple ? hudOf(svg) : null, mTopF = hudF ? Math.max(30, hudF.getBoundingClientRect().bottom - svg.getBoundingClientRect().top + 14) : undefined;      // page 3D, grande fenêtre : on laisse la place de la barre HUD
+    const F = viewFrame(svg, [x0, x1, y0, y1], pad, false, mTopF, mBot);
     if (adj && fv.manual) gridLines(svg, F, F.ix(0), F.ix(F.W), F.iy(F.H), F.iy(0)); else gridLines(svg, F, x0 - 1, x1 + 1, y0 - 1, y1 + 1);
     const sx = Math.min(...SC.map(p => F.X(p[0]))), sy = Math.min(...SC.map(p => F.Y(p[1]))), sW = Math.max(...SC.map(p => F.X(p[0]))) - sx, sH = Math.max(...SC.map(p => F.Y(p[1]))) - sy;      // cadre de l'écran à l'image
     const lvl = verdict(r).lvl;
@@ -837,13 +841,13 @@
     svg.append(el('polygon', { points: pts(F, Q), fill: 'rgba(62,207,142,.42)', 'clip-path': 'url(#scrClip)' })); // faisceau ∩ écran (utile)
     svg.append(el('polygon', { points: pts(F, SC), fill: 'none', stroke: lvl === 'bad' ? SCREEN_RED : COL[lvl], 'stroke-width': 3 }));      // écran non couvert : rouge vif ; couvert : vert
     svg.append(el('polygon', { points: pts(F, Q), fill: 'none', stroke: '#4da3ff', 'stroke-width': 2, class: 'bglow' }));
-    if (!simple) ['A', 'B', 'C', 'D'].forEach((n, i) => {
+    ['A', 'B', 'C', 'D'].forEach((n, i) => {      // lettres des coins du faisceau (aussi en page 3D)
       const p = Q[i], ox = i === 0 || i === 3 ? -12 : 12, oy = i < 2 ? -8 : 16;
       svg.append(el('circle', { cx: F.X(p[0]), cy: F.Y(p[1]), r: 3.5, fill: '#4da3ff' }));
       svg.append(el('text', { x: F.X(p[0]) + ox, y: F.Y(p[1]) + oy, 'text-anchor': 'middle', fill: '#9cc9ff', 'font-size': 13, 'font-weight': 700 }, n));
     });
     const cx = F.X(AIM[0]), cy = F.Y(AIM[1]);                                                                   // point visé par l'axe optique
-    if (!simple) svg.append(el('path', { d: `M${cx - 7},${cy}H${cx + 7}M${cx},${cy - 7}V${cy + 7}`, stroke: '#fff', 'stroke-width': 1.5, opacity: .7 }));
+    svg.append(el('path', { d: `M${cx - 7},${cy}H${cx + 7}M${cx},${cy - 7}V${cy + 7}`, stroke: '#fff', 'stroke-width': 1.5, opacity: .7 }));
     if (VPp) svg.append(el('rect', { x: F.X(VPp[0]) - 8, y: F.Y(VPp[1]) - 6, width: 16, height: 12, rx: 2, fill: '#4da3ff' }));      // Vue salle : le VP, vu de face
     if (!simple && sW > 130 && sy > 34) {
       const t = el('text', { x: sx + sW / 2, y: sy - 8, 'text-anchor': 'middle', fill: '#e8edf2', 'font-size': 13 });       // largeur et hauteur de l'écran : violet si verrouillées
@@ -856,11 +860,12 @@
       svg.append(el('text', isBig(svg) ? { x: sx + sW / 2, y: by + 17, 'text-anchor': 'middle', fill: pcol('vp', GREY), 'font-size': 12, 'font-weight': 600, opacity: .8, class: 'vpName' } : { x: sx + sW, y: by + 36, 'text-anchor': 'end', fill: pcol('vp', GREY), 'font-size': 12, 'font-weight': 600, opacity: .8, class: 'vpName' }, S.vp));      // violet si le projecteur est verrouillé
     }
     const dm = dragMode();
-    if (dm && !isThumb(svg) && !simple) {                                                       // poignée au centre de l'image : glisser = déplacer le faisceau
+    if (dm && !isThumb(svg) && (!simple || (dd && dd.adv))) {                                   // poignée au centre de l'image : glisser = déplacer le faisceau (page 3D : si « Réglages supplémentaires » est coché pour la vue de face)
       const g = CEN, free = dm !== 'trans' || !locks.x || !locks.z || (r.frame && !locks.y), hx = F.X(g[0]), hy = F.Y(g[1]);
       svg.append(el('circle', { cx: hx, cy: hy, r: 17, fill: 'none', stroke: free ? DRAG_OPTS.find(o => o[0] === dm)[3] : '#b58cff', 'stroke-width': 1.5, 'stroke-dasharray': '3 3', opacity: .85, class: 'blink', 'pointer-events': 'none' }));
-      if (free) svg.append(el('circle', { class: 'handle', cx: hx, cy: hy, r: 30, fill: 'transparent' }));
+      if (free) svg.append(el('circle', { class: 'handle beamHandle', cx: hx, cy: hy, r: 30, fill: 'transparent' }));
     }
+    if (simple && VPp) handle(svg, F, VPp[0], VPp[1], ['x', 'z'], 'vpHandle');                // page 3D : le VP se déplace au doigt en x et z (les axes verrouillés ne bougent pas)
     if (isThumb(svg)) {                                                            // petite vue : dimensions du faisceau + angles aux sommets
       const q = r.q, inw = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
       ['A', 'B', 'C', 'D'].forEach((n, i) => val(svg, F.X(Q[i][0]) + inw[i][0] * 6, F.Y(Q[i][1]) + inw[i][1] * 16, `${fm(q.angles[n], 1)}°`, inw[i][0] > 0 ? 'start' : 'end', '#9cc9ff', 11));
@@ -874,10 +879,10 @@
   }
 
   /* ---------- Vue de côté / dessus (le VP se déplace au doigt) ---------- */
-  function handle(svg, F, x, y, axes) {
+  function handle(svg, F, x, y, axes, cls = '') {
     const free = axes.some(k => !locks[k]), cx = F.X(x), cy = F.Y(y);
     svg.append(el('circle', { cx, cy, r: 17, fill: 'none', stroke: free ? '#fff' : '#b58cff', 'stroke-width': 1.5, 'stroke-dasharray': '3 3', opacity: .85 }));
-    if (free) svg.append(el('circle', { class: 'handle', cx, cy, r: 30, fill: 'transparent' }));
+    if (free) svg.append(el('circle', { class: 'handle' + (cls ? ' ' + cls : ''), cx, cy, r: 30, fill: 'transparent' }));
   }
   const DIM = '#ffd166', LOCKC = '#b58cff', GREY = '#8b98a6', SCREEN_RED = '#fc0522', LOST_DARK = '#f7a414';      // vues de côté et de dessus : écran en rouge vif, projection hors écran en orange (dans le prolongement de la ligne de l'écran)
   const pcol = (k, c) => locks[k] ? LOCKC : c;                       // un paramètre verrouillé s'affiche en violet partout
@@ -894,6 +899,7 @@
   }
   const isBig = svg => svg.closest('.card').classList.contains('full');
   const isThumb = svg => !isBig(svg) && $('viz').classList.contains('fs');
+  const hudOf = svg => { const c = svg.closest('.card'), h = c && c.querySelector('.hud'); return h && (c.classList.contains('full') || h.classList.contains('on3')) ? h : null; };      // barre HUD affichée dans la carte de cette vue (plein écran 2D, grande fenêtre de la page 3D)
   /* Page 3D, Affichage : une seule vue reçoit les éléments (faisceau, position VP, orientation VP, lens shift, calcul config). dsp(vue) = ses éléments, ou null = affichage habituel de la vue */
   const dsp = v => in3d() && window.View3D.showFor ? View3D.showFor(v) : null;
   function cornerInfo(svg, F, d, v) {                  // orientation et lens shift demandés : en haut à droite, seules les valeurs pertinentes pour la vue
@@ -919,12 +925,13 @@
     let F;
     if (topView) {
       const hx = Math.max(Math.abs(a0), Math.abs(a1), Math.abs(S.x)) * 1.15 + 0.5;
-      const hud = isBig(svg) && svg.closest('.card').querySelector('.hud');
+      const hud = hudOf(svg);
       const mTop = hud ? Math.max(30, hud.getBoundingClientRect().bottom - svg.getBoundingClientRect().top + 48) : undefined;
       F = man ? viewFrame(svg, manualBounds(svg, dvv, mTop == null ? 30 : mTop, mBot || 30), 0, true, mTop, mBot) : viewFrame(svg, [-hx, hx, Math.min(-0.2, b0 - 0.3), Math.max(S.y * 1.25, S.y + 2, b1 + 0.3)], 0.3, true, mTop, mBot);
     } else {
       const maxz = Math.max(b1, S.z, S.sh) + 0.2, minz = Math.min(0, b0, S.z);
-      F = man ? viewFrame(svg, manualBounds(svg, dvv, 30, mBot || 30), 0, false, undefined, mBot) : viewFrame(svg, [Math.min(-0.3, a0 - 0.3), Math.max(S.y * 1.25, S.y + 2, a1 + 0.3), minz - 0.2, maxz + Math.max(1, 0.2 * maxz)], 0.3, false, undefined, mBot);
+      const hudS = hudOf(svg), mTopS = hudS ? Math.max(30, hudS.getBoundingClientRect().bottom - svg.getBoundingClientRect().top + 14) : undefined;      // grande fenêtre de la page 3D : place de la barre HUD
+      F = man ? viewFrame(svg, manualBounds(svg, dvv, mTopS == null ? 30 : mTopS, mBot || 30), 0, false, mTopS, mBot) : viewFrame(svg, [Math.min(-0.3, a0 - 0.3), Math.max(S.y * 1.25, S.y + 2, a1 + 0.3), minz - 0.2, maxz + Math.max(1, 0.2 * maxz)], 0.3, false, mTopS, mBot);
     }
     gridLines(svg, F, ...(man ? visRange(F) : F.b));
     if (!topView) { const [bx0, bx1] = F.b; svg.append(el('line', { x1: F.X(bx0), x2: F.X(bx1), y1: F.Y(0), y2: F.Y(0), stroke: '#556', 'stroke-width': 2 })); }      // sol
@@ -992,7 +999,7 @@
     const S = r.Sf;      // Vue écran : la vue de dessus est dessinée dans le repère de l'écran (écran à plat)
     const qx = r.B.quad.map(p => p[0]), xL = Math.min(...qx), xR = Math.max(...qx);          // étendue horizontale réelle du faisceau = ses 4 coins A B C D (pas le milieu des bords : pan / roll / keystone le font déborder), comme la vue de face
     const hx = Math.max(Math.abs(xL), Math.abs(xR), S.sw / 2, Math.abs(S.x)) * 1.15 + 0.5;
-    const hud = isBig(svg) && svg.closest('.card').querySelector('.hud');                    // plein écran : l'écran est en haut, sous le bandeau d'état → on réserve sa hauteur
+    const hud = hudOf(svg);                                                                  // plein écran (ou grande fenêtre de la page 3D) : l'écran est en haut, sous le bandeau d'état → on réserve sa hauteur
     const mTop = hud ? Math.max(30, hud.getBoundingClientRect().bottom - svg.getBoundingClientRect().top + 48) : undefined;
     const mBot = dispBot(svg), man = dispManual(svg), F = man ? viewFrame(svg, manualBounds(svg, dv.svgTop, mTop == null ? 30 : mTop, mBot || 30), 0, true, mTop, mBot) : viewFrame(svg, [-hx, hx, -0.2, Math.max(S.y * 1.25, S.y + 2)], 0.3, true, mTop, mBot);      // écran en haut, VP en bas ; x < 0 à gauche, x > 0 à droite (comme la vue de face)
     gridLines(svg, F, ...(man ? visRange(F) : F.b));
@@ -1020,17 +1027,18 @@
 
   /* glisser le VP : horizontal / vertical de la vue -> paramètres (les axes verrouillés ne bougent pas) */
   let lastR = null, dragNow = null;      // dragNow : icône en cours de glisser (son nom s'affiche sous l'écran)
-  function attachDrag(id, axes) {
+  function attachDrag(id, axes, sel = '.handle') {
     const svg = $(id); let off = null;
     const world = e => { const rc = svg.getBoundingClientRect(), F = frozen[id]; return [F.ix(e.clientX - rc.left), F.iy(e.clientY - rc.top)]; };
     svg.addEventListener('pointerdown', e => {
-      if (!e.target.closest('.handle')) return;
+      if (!e.target.closest(sel)) return;
       e.preventDefault(); try { svg.setPointerCapture(e.pointerId); } catch (_) { /* pointeur synthétique */ }
       frozen[id] = svg._F; const w = world(e); off = [S[axes[0]] - w[0], S[axes[1]] - w[1]];
     });
     svg.addEventListener('pointermove', e => {
       if (!off || !frozen[id]) return;
-      const w = world(e), q = svg.closest('.card').classList.contains('full') ? 100 : 20;       // pas : 1 cm en plein écran, 5 cm sinon
+      const card = svg.closest('.card'), bigWin = in3d() && window.Layout3D && Layout3D.bigView && Layout3D.bigView() === (card.classList.contains('face') ? 'face' : card.classList.contains('side') ? 'side' : 'top');
+      const w = world(e), q = card.classList.contains('full') || bigWin ? 100 : 20;       // pas : 1 cm en plein écran (ou dans la grande fenêtre de la page 3D), 5 cm sinon
       const lk = [];
       axes.forEach((k, i) => { if (!locks[k]) { const v = Math.round((w[i] + off[i]) * q) / q; S[k] = clampP(k, magnetKey(k, v, magnetPx(frozen[id].k))); } else if (Math.abs(w[i] + off[i] - S[k]) > 0.05) lk.push(k); });
       if (lk.length) lockMsg(...lk);
@@ -1062,6 +1070,22 @@
     document.querySelectorAll('.card.full .hud').forEach(h => {      // deux groupes : x, y, z · état (couverture, pixels perdus) ; en vue de face plein écran ils sont placés séparément
       h.innerHTML = `<div class="hg">${['y', 'x', 'z'].map(k => `<button class="chip ${locks[k] ? 'lockd' : ''}" data-k="${k}">${locks[k] ? ICON_L : ICON_U}${PARAMS[k].label} <b>${fm(S[k])} m</b></button>`).join('')}</div><div class="hg st">${lastR ? statusHtml(lastR) : ''}</div>`;
     });
+    hud3d();
+  }
+  /* Page 3D : barre HUD de la grande fenêtre (vues élargies, plein écran) : les chips verrouillables des paramètres qu'on voit dans cette vue + le zoom.
+     Vue de face : x, z · côté : y, z · dessus : x, y · 3D : x, y, z. */
+  const HUD_AXES = { face: ['x', 'z'], side: ['y', 'z'], top: ['x', 'y'], v3d: ['y', 'x', 'z'] };
+  function hud3d() {
+    if (!in3d()) return;
+    const big = window.Layout3D && Layout3D.bigView ? Layout3D.bigView() : null;
+    const hosts = { face: document.querySelector('.card.face .hud'), side: document.querySelector('.card.side .hud'), top: document.querySelector('.card.top .hud'), v3d: $('hud3d') };
+    for (const v in hosts) {
+      const h = hosts[v]; if (!h) continue;
+      const chip = (k, txt) => `<button type="button" class="chip ${locks[k] ? 'lockd' : ''}" data-k="${k}" aria-pressed="${!!locks[k]}" title="${locks[k] ? 'Verrouillé : toucher pour libérer' : 'Libre : toucher pour verrouiller'}">${locks[k] ? ICON_L : ICON_U}${txt}</button>`;
+      const html = v !== big ? '' : `<div class="hg">${HUD_AXES[v].map(k => chip(k, `${PARAMS[k].label} <b>${fm(S[k])} m</b>`)).join('')}${vpOf().zoomable ? chip('zoom', `${PARAMS.zoom.label} <b>${fm(S.zoom, 0)} %</b>`) : ''}</div>`;
+      h.classList.toggle('on3', v === big);
+      if (h.innerHTML !== html) h.innerHTML = html;      // pas de réécriture inutile : un appui en cours sur un chip ne doit pas être perdu
+    }
   }
 
 
@@ -3112,9 +3136,9 @@
 
   buildParams(); buildLockPills(); syncRot();
   $('title').style.display = 'none';                 // page Calcul au démarrage
-  attachDrag('svgSide', ['y', 'z']); attachDrag('svgTop', ['x', 'y']); renderSimHead(); renderSimSettings(); renderIoBoxes(); attachFaceDrag(); attachDisp(); attachDispView('dispSelSide', 'svgSide', false); attachDispView('dispSelTop', 'svgTop', true);
+  attachDrag('svgSide', ['y', 'z']); attachDrag('svgTop', ['x', 'y']); attachDrag('svgFace', ['x', 'z'], '.vpHandle'); renderSimHead(); renderSimSettings(); renderIoBoxes(); attachFaceDrag(); attachDisp(); attachDispView('dispSelSide', 'svgSide', false); attachDispView('dispSelTop', 'svgTop', true);
   document.querySelectorAll('.expand').forEach(b => b.onclick = () => { const card = b.closest('.card'); if (in3d()) { Layout3D.fullFrom(card); return; } if ($('p-calc').classList.contains('cfg')) { $('cfgBtn').click(); toggleFull(card, true); backToCompact = true; return; } toggleFull(card); });      // en vue compacte : on en sort, puis la vue passe en plein écran
-  $('viz').addEventListener('click', e => { const c = e.target.closest('.chip'); if (c) { locks[c.dataset.k] = !locks[c.dataset.k]; render(); } });
+  document.addEventListener('click', e => { const c = e.target.closest('.hud .chip'); if (c) { locks[c.dataset.k] = !locks[c.dataset.k]; render(); } });      // chips de la barre HUD (vues plein écran 2D, grande fenêtre de la page 3D) : verrouille / libère
   addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.card.full').forEach(c => toggleFull(c, false)); });
   render();
   /* aides de test : ?view=3d  ?mode=compact|full  ?details=quad|pos|scr|px  ?auto=1  ?unlock=1  ?adv=lens,trans,rot,off  ?lens=sx,sy (en %)  ?pop=lens  ?scroll=1  ?simdrag=dx,dy (pixels, sur la poignée de la vue de face)  ?scr=dx,dy,dz,lacet,tangage,roulis  ?faceview=room|screen  ?src=free|std|maker  ?rot=pan,tilt,roll  ?warn=1 (ouvre la liste des alertes) */
@@ -3136,7 +3160,7 @@
   if (qs.get('scroll')) $('params').scrollTop = 1e5;
   if (qs.get('dragmode')) { adv.drag = qs.get('dragmode'); render(); }      // ?dragmode=lens|trans|rot|zoom : option agissant au glisser (test)
   if (qs.get('simdrag')) {
-    const [dx, dy] = qs.get('simdrag').split(',').map(Number), h = document.querySelector('#svgFace .handle'), svg = $('svgFace');
+    const [dx, dy] = qs.get('simdrag').split(',').map(Number), h = document.querySelector('#svgFace .beamHandle'), svg = $('svgFace');
     if (h) {
       const rc = h.getBoundingClientRect(), x = rc.left + rc.width / 2, y = rc.top + rc.height / 2, k = svg._F.k, c0 = lastR.q.centroid, rg0 = lastR.frame ? roomGeo(lastR).cen : null;
       const ev = (t, px, py) => new PointerEvent(t, { clientX: px, clientY: py, pointerId: 1, bubbles: true });

@@ -22,19 +22,19 @@ const GFX = ['face', 'side', 'top', 'v3d'];
 let cb = null, inited = false, on = false;
 let mode = 'normal', prevMode = 'normal';
 let calc, main, stage, side, colOut, viz, params, dispBox, locks, status, warnBox, simVals, kpis, band, dbIn, dragSel, tabs, root3, bar, scroll, fmain, mdata;
-let nWrap = null, nHost = null, nStrip = {}, mzN = null, roN = null;
+let nWrap = null, nHost = null, nStrip = {}, mzN = null, roN = null, fWrap = null, fStrip = {};
 let cards = {}, home = {}, park = null, mzC = null, mzF = null, mzP = null, pHost = null, rowEl = {}, dataBox = null, gfxWrap = null, ro = null, kickRaf = 0;
 const store = (() => { try { return JSON.parse(localStorage.getItem('vp3dl') || '{}'); } catch (_) { return {}; } })();
 const legacy = (() => { try { return JSON.parse(localStorage.getItem('vp3d') || '{}'); } catch (_) { return {}; } })();      // anciennes préférences : fenêtres Vues / Réglages
 const pref = { kpi: Object.assign({ util: 1, perdus: 1, couvert: 1, ratio: 1, lux: 1, forme: 1 }, store.kpi) };
 const save = () => { try { localStorage.setItem('vp3dl', JSON.stringify(pref)); } catch (_) { /* stockage indisponible */ } };
 const cpt = { tree: null, rows: ['gfx', 'disp', 'data', 'params'], gfxH: 0, fold: {}, pin: false };      // présentation compacte (gardée en mémoire pendant la session) ; fold : fenêtres rétractées ; pin : ligne des vues toujours visible
-const fl = { main: 'v3d', tree: null, max: null, panel: null, back: null, lastMax: null };      // vues élargies ; max : fenêtre mise en plein écran (seule, au-dessus de l'ensemble) ; panel : volet latéral ouvert avec elle (views | params | disp, un seul à la fois)
+const fl = { main: 'v3d', tree: null, max: null, panel: null, back: null, lastMax: null, dock: { params: 'r', disp: 'r' }, frac: {} };      // vues élargies ; max : fenêtre mise en plein écran (seule, au-dessus de l'ensemble) ; panel : volet latéral ouvert avec elle (views | params | disp, un seul à la fois) ; dock / frac : comme en vue principale, côté où Réglages et Affichage sont posées (leur onglet y reste, même fermées) et leur dernière taille
+const FWIN = ['params', 'disp'];                                                                          // vues élargies : fenêtres qui se chargent par leur onglet (bord de la zone), comme en vue principale ; en plein écran elles restent des volets
 /* vue principale : la 3D et les fenêtres Vues / Réglages / Affichage en mosaïque ; dock : côté (l, r, t, b) où chaque fenêtre est posée par rapport à la 3D, qui y garde son bouton même fermée ; frac : sa dernière taille (part de la zone) */
 const NWIN = ['views', 'params', 'disp'];
 const nav = { tree: null, dock: { views: 'r', params: 'r', disp: 'r' }, frac: {} };
 let bandOpen = true, lastSw = null, activeView = null;                                                      // activeView : identifiant de la vue utilisateur chargée (userviews.js), sinon null
-const sheet = { params: false, disp: false };                                                            // plein écran : volets Réglages / Affichage ouverts (fermés à l'arrivée, pour ne pas cacher les petites fenêtres)
 
 /* ---------- Dispositions par défaut ---------- */
 const viewsH = () => Math.round(Math.min(380, Math.max(190, innerHeight * 0.36)));      // hauteur par défaut (px) de la ligne des vues
@@ -45,19 +45,21 @@ function defFull(m) {
 }
 const defGfxH = viewsH;
 const nArea = () => Math.max(500, innerWidth - 76 - 30), nW = id => Math.min(id === 'disp' ? 260 : 360, Math.max(id === 'disp' ? 210 : 260, innerWidth * (id === 'disp' ? .16 : .21)));
-const defNormal = () => ({ dir: 'h', kids: [{ id: 'v3d', w: 1 }, { id: 'views', w: nW('views') / (nArea() - nW('views')) }] });      // 3D + fenêtre Vues à droite ; Réglages et Affichage fermées, ouvrables à droite
+const defNormal = () => { const v = nW('views'), p = nW('params'), rest = Math.max(160, nArea() - v - p); return { dir: 'h', kids: [{ id: 'v3d', w: 1 }, { id: 'views', w: v / rest }, { id: 'params', w: p / rest }] }; };      // 3D + fenêtres Vues et Réglages à droite ; Affichage fermée, ouvrable à droite
 const nShare = (id, target, zone) => target === 'v3d' ? .3 : target == null ? (zone === 'l' || zone === 'r' ? .24 : .3) : .5;      // part prise par une fenêtre qui arrive
-function dockSide(tree, id) {                                               // côté où se trouve la fenêtre par rapport à la 3D (dernier niveau où leurs chemins se séparent)
+function dockSide(tree, id, ref = 'v3d') {                                  // côté où se trouve la fenêtre par rapport à la 3D (vue principale) ou à la grande fenêtre (vues élargies) : dernier niveau où leurs chemins se séparent
   const path = (n, t, acc) => { if (n.id === t) return acc; if (n.id != null) return null; for (let i = 0; i < n.kids.length; i++) { const r = path(n.kids[i], t, [...acc, { n, i }]); if (r) return r; } return null; };
-  const a = path(tree, id, []), b = path(tree, 'v3d', []); if (!a || !b) return null;
+  const a = path(tree, id, []), b = path(tree, ref, []); if (!a || !b) return null;
   let k = 0; while (k < a.length && k < b.length && a[k].n === b[k].n && a[k].i === b[k].i) k++;
   if (k >= a.length || k >= b.length) return null;
   const g = a[k].n; return g.dir === 'h' ? (a[k].i < b[k].i ? 'l' : 'r') : (a[k].i < b[k].i ? 't' : 'b');
 }
-const placeN = (tree, id) => {                                              // une fenêtre rouverte revient du côté où elle avait été posée, avec sa dernière taille
-  const side = nav.dock[id] || 'r', hz = side === 'l' || side === 'r', f = Math.max(.12, Math.min(.5, nav.frac[id] || (hz ? nW(id) / nArea() : .3))), w = f / (1 - f), before = side === 'l' || side === 't';
+const placeDock = (tree, id, dock, frac) => {                              // une fenêtre rouverte revient du côté où elle avait été posée, avec sa dernière taille
+  const side = dock[id] || 'r', hz = side === 'l' || side === 'r', f = Math.max(.12, Math.min(.5, frac[id] || (hz ? nW(id) / nArea() : .3))), w = f / (1 - f), before = side === 'l' || side === 't';
   return { dir: hz ? 'h' : 'v', w: 1, kids: before ? [{ id, w }, { ...tree, w: 1 }] : [{ ...tree, w: 1 }, { id, w }] };
 };
+const placeN = (tree, id) => placeDock(tree, id, nav.dock, nav.frac);       // vue principale
+const placeF = (tree, id) => FWIN.includes(id) ? placeDock(tree, id, fl.dock, fl.frac) : placeInLastGroup(tree, id);      // vues élargies : Réglages / Affichage par leur onglet, les vues rejoignent la colonne des petites
 const placeInViews = (tree, id) => {                                         // compacte : une vue rouverte rejoint la ligne des vues
   let hit = null;
   (function w(n, p) { if (!n || hit) return; if (n.id != null) { if (GFX.includes(n.id)) hit = { n, p }; } else n.kids.forEach(k => w(k, n)); })(tree, null);
@@ -70,9 +72,12 @@ const placeInViews = (tree, id) => {                                         // 
   if (tree.kids) { tree.kids.unshift({ id, w: viewsH() }); return true; }              // plus aucune vue : la nouvelle prend la première place
   return false;
 };
-const placeInLastGroup = (tree, id) => {                                    // plein écran : une fenêtre rouverte rejoint la colonne (ou la ligne) des petites
-  if (tree.id != null || tree.kids.length < 2) return false;
-  const last = tree.kids[tree.kids.length - 1]; if (last.id != null) return false;
+const isFwin = n => n.id != null && FWIN.includes(n.id);
+const placeInLastGroup = (tree, id) => {                                    // vues élargies : une vue rouverte rejoint la colonne (ou la ligne) des petites ; Réglages / Affichage posées sur un bord ne comptent pas
+  let n = tree;
+  while (n.id == null) { const rest = n.kids.filter(k => !isFwin(k)); if (rest.length === 1 && rest[0].id == null) n = rest[0]; else break; }      // Réglages / Affichage posées au-dessus ou au-dessous : la mosaïque des vues est l'enfant restant
+  if (n.id != null || n.kids.length < 2) return false;
+  const cand = n.kids.filter(k => !isFwin(k)), last = cand[cand.length - 1]; if (!last || cand.length < 2 || last.id != null) return false;
   last.kids.push({ id, w: last.kids.reduce((a, g) => a + (g.w || 1), 0) / last.kids.length || 1 }); return true;
 };
 
@@ -120,9 +125,34 @@ function dropOut(id, x, y) {                                                // A
   const want = others.slice(); want.splice(ys.filter(v => v < y).length, 0, id);
   mzC.close(id); cpt.rows = cpt.rows.filter(r => docked(r)).concat(want); layoutRows();
 }
+/* Réglages « saute » sous la ligne des vues pendant un glisser dans un graphique (présentation compacte) : le graphique manipulé reste visible avec le curseur qui bouge.
+   Temporaire : la ligne reprend sa place (et le défilement d'avant) dès que le geste est relâché. cpt.rows n'est jamais modifié. */
+let floatP = null, floatRaf = 0;                                            // floatP : { top } = défilement d'avant le saut
+const rowsOrder = () => {                                                   // ordre d'empilement : celui des lignes, avec Réglages juste après la ligne des vues tant qu'elle « saute »
+  if (!floatP) return cpt.rows;
+  const o = cpt.rows.filter(r => r !== 'params'); o.splice(o.indexOf('gfx') + 1, 0, 'params'); return o;
+};
+function floatParams(on) {
+  if (mode !== 'compact') return;
+  cancelAnimationFrame(floatRaf); floatRaf = 0;
+  if (on) {
+    if (floatP) return;
+    floatP = { top: scroll.scrollTop };
+    gfxWrap.classList.add('pin');                                           // la ligne des vues reste en haut, quel que soit le défilement
+    rowEl.params.el.classList.add('mwFloat');
+    scroll.insertBefore(rowEl.params.el, gfxWrap.nextSibling);              // on ne déplace que Réglages : les vues (cibles du geste en cours) ne quittent jamais le document
+    scroll.scrollTop = 0;
+  } else if (floatP) {
+    floatRaf = requestAnimationFrame(() => {                                // après la fin du geste
+      floatRaf = 0; if (!floatP) return;
+      const t = floatP.top; floatP = null; rowEl.params.el.classList.remove('mwFloat');
+      layoutRows(); scroll.scrollTop = t;
+    });
+  }
+}
 function layoutRows() {
   scroll.replaceChildren();
-  for (const r of cpt.rows) {
+  for (const r of rowsOrder()) {
     if (r === 'gfx') { scroll.append(gfxWrap); continue; }
     if (docked(r)) continue;                                                // dans la ligne des vues : la mosaïque l'a rangée
     scroll.append(rowEl[r].el); rowEl[r].body.append(rowContent(r));
@@ -131,7 +161,7 @@ function layoutRows() {
     rowEl[r].el.classList.toggle('mwFold', !!cpt.fold[r]);
     rowEl[r].head.querySelector('[data-k=fold]').textContent = cpt.fold[r] ? '▸' : '▾';
   }
-  gfxWrap.classList.toggle('pin', !!cpt.pin);
+  gfxWrap.classList.toggle('pin', !!cpt.pin || !!floatP);
   renderBar(); kick();
 }
 function buildRows() {
@@ -174,6 +204,10 @@ function winDefs(kind) {
     get closable() { return kind === 'f' && !fl.max; },                       // volet Vues et plein écran : pas de ✕ de fermeture (la croix du plein écran est un bouton à part)
   });
   const o = Object.fromEntries(GFX.map(id => [id, def(id)]));
+  if (kind === 'f') {                                                        // vues élargies : Réglages et Affichage, fenêtres de la mosaïque chargées par leur onglet (comme en vue principale)
+    o.params = { title: 'Réglages', el: $('win3dParams'), buttons: [] };
+    o.disp = { title: 'Affichage', el: $('win3dDisp'), buttons: [] };
+  }
   if (kind === 'c') {                                                        // compacte : Affichage et Données peuvent aussi entrer dans la ligne des vues (rétractables, jamais fermées)
     o.disp = { title: 'Affichage', el: dispBox, closable: false, foldable: true, rowable: true, buttons: [] };
     o.data = { title: 'Données', el: dataBox, closable: false, foldable: true, rowable: true, buttons: [] };
@@ -184,7 +218,7 @@ function onAction(id, k) {
   if (k === 'full') {
     if (mode !== 'full') { fl.max = null; fl.back = null; setMode('full', { main: id }); }      // depuis une autre présentation : on passe d'abord en vues élargies
     else if (fl.max || id === fl.main) setMax(id);                                                              // la grande fenêtre (ou une vue du volet Vues) : plein écran
-    else { fl.tree = swapIds(fl.tree, id, fl.main) || defFull(id); fl.main = id; mzF.setTree(fl.tree); }         // une petite fenêtre : elle devient la grande (elle prend la place de l'ancienne, le reste de la disposition est gardé)
+    else { fl.tree = swapIds(fl.tree, id, fl.main) || defFull(id); fl.main = id; mzF.setTree(fl.tree); syncBig(); }         // une petite fenêtre : elle devient la grande (elle prend la place de l'ancienne, le reste de la disposition est gardé)
   }
   else if (k === 'unmax') exitMax();
 }
@@ -194,8 +228,32 @@ function onAction(id, k) {
 function setMax(id) {
   fl.max = id || null; if (id) fl.lastMax = id;
   if (mode !== 'full') return;
-  mzF.setTree(fl.max ? { id: fl.max, w: 1 } : (fl.tree || defFull(fl.main)));
-  applyPanel(); syncPanel(); renderBar(); kick();
+  mzF.setTree(fl.max ? { id: fl.max, w: 1 } : (fl.tree || defFull(fl.main))); fixSide();
+  applyPanel(); syncPanel(); renderBar(); renderTabsF(); kick(); syncBig();
+}
+/* Grande fenêtre (vues élargies : la plus grande ; plein écran : la seule) : id de la vue (v3d, face, side, top), ou null hors vues élargies / plein écran. Elle reçoit la barre HUD (chips verrouillables). */
+function bigView() {
+  if (!on || mode !== 'full') return null;
+  if (fl.max) return fl.max;
+  let best = fl.main, ba = -1, ma = -1;
+  for (const id of GFX) {
+    if (!mzF.has(id)) continue;
+    const r = mzF.shell(id).el.getBoundingClientRect(), a = r.width * r.height;
+    if (id === fl.main) ma = a;
+    if (a > ba) { ba = a; best = id; }
+  }
+  return ma >= ba * .98 ? fl.main : best;                                    // à surface (presque) égale, la fenêtre principale prévue
+}
+/* Arrivée dans les vues élargies ou le plein écran (ou changement de grande fenêtre) : la fenêtre Affichage bascule sur la vue concernée, avec « Réglages supplémentaires » cochés
+   (vue 3D et vue de face ; les vues de côté et de dessus n'ont pas cette option). Pas appliqué quand on recharge une vue utilisateur : elle garde ce qui a été enregistré. */
+let restoring = false;
+function syncBig() {
+  if (restoring || mode !== 'full' || !cb || !cb.getShow || !cb.setShow) return;
+  const b = fl.max || fl.main, w = b === 'v3d' ? '3d' : b, sh = cb.getShow(), f = sh.v && sh.v[w]; if (!f) return;
+  const hasAdv = 'adv' in f;
+  if (sh.sel === w && (!hasAdv || f.adv)) return;
+  sh.sel = w; if (hasAdv) f.adv = true;
+  cb.setShow(sh);
 }
 function exitMax() {                                                        // croix : retour là d'où l'on venait (vues élargies, ou la présentation de départ si le plein écran a été pris directement)
   if (fl.back) { const b = fl.back; fl.back = null; fl.max = null; setMode(b); } else setMax(null);
@@ -221,7 +279,8 @@ function chipTitle(id, on) {
             : (one ? 'Rétractée : cliquer pour la déployer' : 'Fermée : cliquer pour la rouvrir');
 }
 /* la ligne des vues épinglée masque le haut du cadre : les fenêtres qui défilent dessous doivent se montrer en dessous d'elle */
-const topInset = el => cpt.pin && mode === 'compact' && !gfxWrap.contains(el) ? gfxWrap.offsetHeight + 8 : 0;
+const topInset = el => (cpt.pin || floatP) && mode === 'compact' && !gfxWrap.contains(el) ? gfxWrap.offsetHeight + 8 : 0;
+const scrollInset = box => mode === 'compact' && box === scroll ? topInset(rowEl.params.el) : 0;      // hauteur de la ligne des vues épinglée (ou Réglages qui a « sauté ») qui masque le haut de la zone qui défile
 function visibleIn(el) {
   const sr = scroll.getBoundingClientRect(), r = el.getBoundingClientRect(), top = sr.top + topInset(el), v = Math.min(r.bottom, sr.bottom) - Math.max(r.top, top);
   return v >= Math.min(r.height, sr.bottom - top) - 4;
@@ -254,15 +313,14 @@ function renderBar() {
     html += `<button type="button" class="m3pin${cpt.pin ? ' on' : ''}" data-pin="1" aria-pressed="${!!cpt.pin}" title="${cpt.pin ? 'La ligne des vues reste toujours visible : cliquer pour la laisser défiler' : 'Garder la ligne des vues toujours visible (même quand on fait défiler)'}" aria-label="Garder la ligne des vues visible">${cpt.pin ? LOCK_ON : LOCK_OFF}</button>`
       + line.map(chip).join('') + `<span class="m3bsep" aria-hidden="true"></span>` + rest.map(chip).join('');
   } else {
-    html += GFX.map(chip).join('') + ['params', 'disp'].map(k => `<button type="button" class="m3chip m3sheet${sheet[k] ? ' on' : ''}" data-s="${k}" title="Ouvrir / fermer le volet">${k === 'params' ? 'Réglages' : 'Affichage'}</button>`).join('');
+    html += GFX.map(chip).join('');                                           // vues élargies : Réglages et Affichage ne sont pas dans la barre, elles se chargent par leur onglet au bord de la zone
   }
   html += `<span class="m3sp"></span><button type="button" class="m3btn" data-r="1" title="Remettre la disposition par défaut" aria-label="Disposition par défaut">↺</button>`;
   bar.innerHTML = html;
 }
 function barClick(e) {
-  const o = e.target.closest('[data-o]'), r = e.target.closest('[data-r]'), sh = e.target.closest('[data-s]'), pin = e.target.closest('[data-pin]');
-  if (sh) { toggle(sh.dataset.s); renderBar(); }
-  else if (pin) { cpt.pin = !cpt.pin; gfxWrap.classList.toggle('pin', cpt.pin); renderBar(); }
+  const o = e.target.closest('[data-o]'), r = e.target.closest('[data-r]'), pin = e.target.closest('[data-pin]');
+  if (pin) { cpt.pin = !cpt.pin; gfxWrap.classList.toggle('pin', cpt.pin); renderBar(); }
   else if (o) chipAct(o.dataset.o);
   else if (r) resetLayout();
 }
@@ -271,7 +329,7 @@ function barClick(e) {
 function resetView(m) {
   if (m === 'normal') { nav.tree = defNormal(); nav.dock = { views: 'r', params: 'r', disp: 'r' }; nav.frac = {}; }
   else if (m === 'compact') { Object.assign(cpt, { tree: defCompact(), rows: ['gfx', 'disp', 'data', 'params'], gfxH: defGfxH(), pin: false }); mzC.unfoldAll(); }
-  else if (m === 'full') { fl.main = 'v3d'; fl.tree = defFull('v3d'); sheet.params = sheet.disp = false; }
+  else if (m === 'full') { fl.main = 'v3d'; fl.tree = defFull('v3d'); fl.dock = { params: 'r', disp: 'r' }; fl.frac = {}; }
   else if (m === 'max') { fl.lastMax = 'v3d'; fl.panel = null; }
 }
 function resetLayout() {
@@ -313,6 +371,7 @@ function toBase() {
   root3.hidden = true; mdata.replaceChildren(); scroll.replaceChildren();
 }
 function arrange(m) {
+  if (floatP) { floatP = null; cancelAnimationFrame(floatRaf); floatRaf = 0; rowEl.params.el.classList.remove('mwFloat'); }      // changement de présentation en plein geste : plus de saut
   toBase(); mode = m;
   for (const [k, c] of [['normal', 'm3n'], ['compact', 'm3c'], ['full', 'm3f']]) { calc.classList.toggle(c, m === k); main.classList.toggle(c, m === k); }
   if (m === 'normal') {
@@ -327,9 +386,9 @@ function arrange(m) {
   } else if (m === 'full') {
     root3.hidden = false; scroll.hidden = true; fmain.hidden = false;
     fmain.append(side, tabs); mdata.append(band); $('viewsBody').append(pHost);
-    mzF.setTree(fl.max ? { id: fl.max, w: 1 } : (fl.tree || defFull(fl.main))); syncPanel();
+    mzF.setTree(fl.max ? { id: fl.max, w: 1 } : (fl.tree || defFull(fl.main))); fixSide(); syncPanel(); renderTabsF(); requestAnimationFrame(adaptN);
   }
-  applyPanel(); vars(); syncKpi(); setBand(bandOpen); renderModes(); kick();
+  applyPanel(); vars(); syncKpi(); setBand(bandOpen); renderModes(); kick(); syncBig();
 }
 function setMode(m, o = {}) {
   if (!on) return;
@@ -347,7 +406,7 @@ function snapshot() {
   if (cb && cb.getShow) s.show = cb.getShow();
   if (mode === 'normal') s.norm = { tree: mzN.state() || nav.tree, dock: { ...nav.dock }, frac: { ...nav.frac } };
   else if (mode === 'compact') s.cpt = { tree: mzC.state() || cpt.tree, rows: cpt.rows.slice(), gfxH: cpt.gfxH, fold: { ...cpt.fold }, pin: !!cpt.pin };
-  else s.full = { main: fl.main, tree: fl.tree || defFull(fl.main), max: fl.max, panel: fl.panel };
+  else s.full = { main: fl.main, tree: fl.tree || defFull(fl.main), max: fl.max, panel: fl.panel, dock: { ...fl.dock }, frac: { ...fl.frac } };
   return JSON.parse(JSON.stringify(s));
 }
 function prune(t, ok) {                                                     // ne garde de l'arbre mémorisé que des fenêtres connues
@@ -377,12 +436,13 @@ function restore(s, id) {
     cpt.pin = !!c.pin;
     gfxWrap.style.height = cpt.gfxH + 'px';
   } else if (s.mode === 'full' && s.full) {
-    fl.main = GFX.includes(s.full.main) ? s.full.main : 'v3d'; fl.tree = prune(s.full.tree, GFX) || defFull(fl.main);
+    fl.main = GFX.includes(s.full.main) ? s.full.main : 'v3d'; fl.tree = prune(s.full.tree, [...GFX, ...FWIN]) || defFull(fl.main);
+    FWIN.forEach(k => { const d = s.full.dock && s.full.dock[k]; fl.dock[k] = ['l', 'r', 't', 'b'].includes(d) ? d : 'r'; const f = s.full.frac && +s.full.frac[k]; if (f > 0) fl.frac[k] = f; else delete fl.frac[k]; });
     fl.max = GFX.includes(s.full.max) ? s.full.max : null; fl.panel = ['views', 'params', 'disp'].includes(s.full.panel) ? s.full.panel : null; fl.back = null;
   }
   activeView = id || null;
   if (!on) { mode = s.mode; renderModes(); return; }                           // pas sur la page VP : la vue s'applique à l'arrivée
-  setMode(s.mode, { force: true, main: fl.main });
+  restoring = true; try { setMode(s.mode, { force: true, main: fl.main }); } finally { restoring = false; }
 }
 function renderModes() {
   document.querySelectorAll('#m3modes [data-m]').forEach(b => { const m = b.dataset.m, o = !activeView && (m === 'max' ? mode === 'full' && !!fl.max : m === 'full' ? mode === 'full' && !fl.max : m === mode); b.classList.toggle('on', o); b.setAttribute('aria-pressed', o); });
@@ -393,17 +453,31 @@ function renderModes() {
 function applyPanel() {
   if (mode === 'normal') { main.classList.remove('p3noviews', 'p3noparams', 'p3nodisp', 'p3off', 'm3max'); calc.classList.remove('m3max'); return; }      // vue principale : les fenêtres sont dans la mosaïque (renderTabsN)
   const full = mode === 'full', mx = full && !!fl.max;                      // plein écran d'une fenêtre : un seul volet à la fois (fl.panel)
-  const v = mx ? fl.panel === 'views' : false, p = mx ? fl.panel === 'params' : sheet.params, d = mx ? fl.panel === 'disp' : sheet.disp;
+  const v = mx ? fl.panel === 'views' : false, p = mx ? fl.panel === 'params' : false, d = mx ? fl.panel === 'disp' : false;      // vues élargies : plus de volets, Réglages et Affichage sont des fenêtres de la mosaïque (onglets) ; volets seulement en plein écran
   calc.classList.toggle('m3max', mx); main.classList.toggle('m3max', mx);
   main.classList.toggle('p3noviews', !v); main.classList.toggle('p3noparams', !p); main.classList.toggle('p3nodisp', !d); main.classList.toggle('p3off', !v && !p && !d);
-  $('win3dViews').classList.toggle('hide3d', !v); $('win3dParams').classList.toggle('hide3d', !p); $('win3dDisp').classList.toggle('hide3d', !d);
+  $('win3dViews').classList.toggle('hide3d', !v); $('win3dParams').classList.toggle('hide3d', mx && !p); $('win3dDisp').classList.toggle('hide3d', mx && !d);
   tabs.querySelectorAll('button[data-t]').forEach(b => { const k = b.dataset.t, onb = k === 'views' ? v : k === 'params' ? p : d; b.classList.toggle('on', !!onb); b.setAttribute('aria-pressed', !!onb); });
 }
 function toggle(k) {
   if (mode === 'full' && fl.max) fl.panel = fl.panel === k ? null : k;      // plein écran : les volets se remplacent l'un l'autre
-  else if (mode === 'full' && k !== 'views') sheet[k] = !sheet[k];
+  else if (mode === 'full') { if (FWIN.includes(k)) fToggle(k); return; }      // vues élargies : l'onglet charge / ferme la fenêtre dans la mosaïque
   else if (mode === 'normal') { nToggle(k); return; }
   applyPanel(); syncPanel(); kick();
+}
+/* ---------- Vues élargies : Réglages / Affichage chargées par leur onglet (même fonctionnement que la vue principale) ---------- */
+function fToggle(k) { if (mzF.has(k)) mzF.close(k); else mzF.open(k); }
+function updateDocksF() { if (mode !== 'full' || fl.max || !fl.tree) return; FWIN.forEach(k => { if (mzF.has(k)) fl.dock[k] = dockSide(fl.tree, k, fl.main) || fl.dock[k]; }); }
+function renderTabsF() {                                                    // un onglet par fenêtre, sur le bord où elle a été posée (même fermée) ; en plein écran ce sont les volets, donc aucun onglet ici
+  for (const q of ['l', 'r', 't', 'b']) fStrip[q].replaceChildren();
+  if (mode !== 'full' || fl.max) return;
+  for (const k of FWIN) {
+    const b = mk('n3Tab' + (mzF.has(k) ? ' on' : ''), 'button'); b.type = 'button'; b.dataset.f = k; b.textContent = NAMES[k]; b.setAttribute('aria-pressed', mzF.has(k));
+    b.title = mzF.has(k) ? 'Fermer la fenêtre ' + NAMES[k] : 'Ouvrir la fenêtre ' + NAMES[k]; fStrip[fl.dock[k] || 'r'].append(b);
+  }
+}
+function fixSide() {                                                        // plein écran : Réglages et Affichage reviennent dans leur volet (la mosaïque ne contient alors que la fenêtre seule)
+  if (mode === 'full' && fl.max) side.append($('win3dParams'), $('win3dDisp'));
 }
 /* ---------- Vue principale : mosaïque 3D + Vues / Réglages / Affichage, onglets sur les bords ---------- */
 function nToggle(k) { if (mzN.has(k)) mzN.close(k); else mzN.open(k); }
@@ -417,10 +491,11 @@ function renderTabsN() {                                                    // u
   const r = mk('n3Tab n3Reset', 'button'); r.type = 'button'; r.dataset.nr = '1'; r.textContent = '↺'; r.title = 'Remettre la vue principale par défaut (3D et Vues à droite)'; r.setAttribute('aria-label', 'Disposition par défaut'); nStrip.r.append(r);
 }
 function adaptN() {                                                         // le contenu s'adapte à la forme de la fenêtre : 3 vues en ligne si elle est large, réglages sur 2 colonnes, affichage en lignes
-  if (mode !== 'normal') return;
-  for (const k of NWIN) {
-    if (!mzN.has(k)) continue;
-    const sh = mzN.shell(k).el, w = sh.offsetWidth, h = sh.offsetHeight; if (!w || !h) continue;
+  const norm = mode === 'normal'; if (!norm && !(mode === 'full' && !fl.max)) return;
+  const mz = norm ? mzN : mzF;
+  for (const k of norm ? NWIN : FWIN) {
+    if (!mz.has(k)) continue;
+    const sh = mz.shell(k).el, w = sh.offsetWidth, h = sh.offsetHeight; if (!w || !h) continue;
     if (k === 'views') viz.classList.toggle('row', w > h * 1.5);
     else if (k === 'params') $('win3dParams').classList.toggle('mwPar', w >= 560);
     else $('win3dDisp').classList.toggle('wide', w >= 520);
@@ -476,7 +551,11 @@ function init(callbacks) {
 
   root3 = mk('m3Root'); root3.id = 'm3Root'; root3.hidden = true;
   bar = mk('m3Bar'); bar.id = 'm3Bar'; scroll = mk('c3Scroll scroll'); scroll.id = 'c3Scroll'; fmain = mk('f3Main'); fmain.id = 'f3Main'; mdata = mk('m3Data'); mdata.id = 'm3Data';
-  const fhost = mk('mzHost'); fmain.append(fhost);
+  const fhost = mk('mzHost');
+  fWrap = mk('n3Wrap f3Wrap');                                              // vues élargies : la mosaïque entourée des onglets de Réglages / Affichage (mêmes bords que la vue principale)
+  for (const q of ['l', 'r', 't', 'b']) { fStrip[q] = mk('n3St n3St-' + q); fWrap.append(fStrip[q]); }
+  fWrap.append(fhost); fmain.append(fWrap);
+  fWrap.addEventListener('click', e => { const t = e.target.closest('[data-f]'); if (t) fToggle(t.dataset.f); });
   park = mk('m3Park'); park.hidden = true;
   nWrap = mk('n3Wrap'); nWrap.id = 'n3Wrap'; nWrap.hidden = true; nHost = mk('mzHost');
   for (const q of ['l', 'r', 't', 'b']) { nStrip[q] = mk('n3St n3St-' + q); nWrap.append(nStrip[q]); }
@@ -487,14 +566,16 @@ function init(callbacks) {
   dataBox = mk('dataBox'); pHost = mk('mzHost p3Col');
   const chost = buildRows();
   mzC = Mosaic.create({ host: chost, wins: winDefs('c'), park, place: placeInViews, folded: cpt.fold, onDropOut: dropOut, onChange: () => { cpt.tree = mzC.state(); if (mode === 'compact') layoutRows(); else { renderBar(); kick(); } }, onAction });
-  mzF = Mosaic.create({ host: fhost, wins: winDefs('f'), park, place: placeInLastGroup, onChange: () => { if (!fl.max) fl.tree = mzF.state(); if (mode === 'full') syncPanel(); renderBar(); kick(); }, onAction });
+  mzF = Mosaic.create({ host: fhost, wins: winDefs('f'), park, edge: true, share: nShare, place: placeF,
+    onClose: id => { if (!FWIN.includes(id) || fl.max) return; const sh = mzF.shell(id).el.getBoundingClientRect(), hr = fhost.getBoundingClientRect(), side = fl.dock[id], f = side === 'l' || side === 'r' ? sh.width / hr.width : sh.height / hr.height; if (isFinite(f) && f > .05) fl.frac[id] = Math.min(.5, f); },      // dernière taille de Réglages / Affichage
+    onChange: () => { if (!fl.max) fl.tree = mzF.state(); if (mode === 'full') { syncPanel(); updateDocksF(); renderTabsF(); requestAnimationFrame(adaptN); } renderBar(); kick(); }, onAction });
   mzN = Mosaic.create({ host: nHost, wins: winDefs('n'), park, edge: true, share: nShare, place: placeN,
     onClose: id => { const sh = mzN.shell(id).el.getBoundingClientRect(), hr = nHost.getBoundingClientRect(), side = nav.dock[id], f = side === 'l' || side === 'r' ? sh.width / hr.width : sh.height / hr.height; if (isFinite(f) && f > .05) nav.frac[id] = Math.min(.5, f); },
     onChange: () => { nav.tree = mzN.state(); if (mode === 'normal') { updateDocks(); renderTabsN(); requestAnimationFrame(adaptN); } kick(); }, onAction });
   mzP = Mosaic.create({ host: pHost, wins: winDefs('p'), park, onChange: () => kick(), onAction });
 
   if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(() => { if (on) kick(); }); Object.values(cards).forEach(c => ro.observe(c));
-    roN = new ResizeObserver(() => { if (on && mode === 'normal') adaptN(); }); NWIN.forEach(k => roN.observe(mzN.shell(k).el)); }
+    roN = new ResizeObserver(() => { if (on && (mode === 'normal' || mode === 'full')) adaptN(); }); NWIN.forEach(k => roN.observe(mzN.shell(k).el)); FWIN.forEach(k => roN.observe(mzF.shell(k).el)); }
   inited = true; applyPanel(); syncKpi(); setBand(true);
 }
 
@@ -520,6 +601,6 @@ function leave() {
   ['side', 'top', 'face'].forEach(k => cards[k].classList.remove('hide3d')); viz.classList.remove('hide3d');
 }
 
-root.Layout3D = { init, enter, leave, vars, kick, setMode, simSwitch, setBand, snapshot, restore, setActive: id => { activeView = id || null; renderModes(); }, get mode() { return mode; }, get active() { return activeView; },
+root.Layout3D = { init, enter, leave, vars, kick, setMode, simSwitch, setBand, snapshot, restore, bigView, floatParams, scrollInset, setActive: id => { activeView = id || null; renderModes(); }, get mode() { return mode; }, get active() { return activeView; },
   fullFrom: card => onAction(card.classList.contains('side') ? 'side' : card.classList.contains('top') ? 'top' : 'face', 'full') };
 })(window);
