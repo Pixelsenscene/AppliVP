@@ -60,6 +60,11 @@ header h1{font-size:17px;margin:0;font-weight:650;white-space:nowrap}
 .row.locked label{color:var(--lock)}
 .ctl{display:grid;grid-template-columns:20px 1fr 20px;gap:6px;align-items:center}
 .row[data-k] .ctl{grid-template-columns:26px 20px 1fr 20px}
+.row[data-a] .ctl{grid-template-columns:26px 20px 1fr 20px}      /* curseurs avancés : cadenas à gauche, comme les autres */
+.row.locked .ctl button[data-a]{opacity:.35}
+.opt .lk{width:26px;height:22px;border-radius:7px}
+.opt .lk svg{width:13px;height:13px}
+.lk.mixed{border-color:var(--lock);color:var(--lock)}      /* groupe verrouillé en partie */
 .ctl button[data-s],.ctl button[data-a]{width:20px;height:20px;padding:0;border-radius:6px;border:1px solid var(--line);background:var(--panel2);font-size:14px;line-height:1;display:grid;place-items:center}
 input[type=range]{width:100%;height:22px;accent-color:var(--acc);margin:0;transition:accent-color .35s,filter .35s}
 .row .lk{width:26px;height:22px;border-radius:7px}
@@ -105,8 +110,6 @@ input[type=range]{width:100%;height:22px;accent-color:var(--acc);margin:0;transi
 #details{position:fixed;z-index:20;top:0;bottom:0;right:0;width:min(1000px,100vw);background:var(--panel);border-left:1px solid var(--line);
   display:flex;flex-direction:column;transform:translateX(102%);transition:transform .28s ease;box-shadow:-12px 0 30px rgba(0,0,0,.4)}
 #details.open{transform:none}
-#details.full{width:100vw}
-#details.full .figs svg:not(.ic){height:min(48vh,560px)}
 .dhead{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
 .dhead h3{margin:0;font-size:16px;flex:none}
 .dsp{flex:1}
@@ -146,7 +149,6 @@ input[type=range]{width:100%;height:22px;accent-color:var(--acc);margin:0;transi
   .kpi{padding:5px 10px}.kpi b{font-size:16px}
   #details{top:auto;left:0;width:100%;height:68%;border-left:0;border-top:1px solid var(--line);transform:translateY(102%);border-radius:18px 18px 0 0}
   #details.open{transform:none}
-  #details.full{height:100%;border-radius:0}
 }
 @media (max-width:600px){
   nav button span{display:none}
@@ -219,10 +221,8 @@ header .toast.show{transform:none}
 /* glisser le VP + plein écran */
 #svgSide,#svgTop,#svgFace{touch-action:none}
 .handle{cursor:grab}
-.expand{position:absolute;right:8px;top:6px;width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);z-index:2;font-size:16px}
 .hud{display:none}
 .card.full .tag{left:calc(14px + env(safe-area-inset-left));top:calc(14px + env(safe-area-inset-top));font-size:13px}
-.card.full .expand{top:calc(8px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));width:48px;height:48px;font-size:20px}
 .card.full .hud{display:flex;gap:8px;flex-wrap:wrap;position:absolute;z-index:2;left:calc(12px + env(safe-area-inset-left));top:calc(40px + env(safe-area-inset-top));right:80px}
 .chip{display:flex;align-items:center;gap:6px;height:38px;padding:0 12px;border-radius:999px;border:1.5px solid var(--line);background:var(--panel2);color:var(--txt)}
 .chip svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -244,9 +244,7 @@ header .toast.show{transform:none}
 .viz.fs.fs-face .card.top{grid-row:2}
 .viz.fs .legend{display:none}
 .viz.fs .card:not(.full) .tag{font-size:10px;left:10px;top:8px}
-.viz.fs .card:not(.full) .expand{width:34px;height:34px;font-size:14px}
 .viz.fs .card.full .tag{left:14px;top:12px}
-.viz.fs .card.full .expand{top:8px;right:8px;width:48px;height:48px;font-size:20px}
 .viz.fs .card.full .hud{left:12px;top:36px;right:68px}
 .viz.fs .card.full .dragSel{left:50%;top:110px}
 .viz.fs.fs-face .card.face .dragSel{top:168px}
@@ -420,7 +418,6 @@ header .toast.show{transform:none}
 .calc.cfg .viz .card.face,.calc.cfg .viz .card.side,.calc.cfg .viz .card.top{grid-row:1;grid-column:auto}
 .calc.cfg .viz .side,.calc.cfg .viz .top{display:block}
 .calc.cfg .legend,.calc.cfg .results{display:none}
-.calc.cfg .expand{top:4px;right:4px;width:26px;height:26px;border-radius:8px;font-size:13px;padding:0}      /* vue compacte : petit bouton plein écran en haut à droite de chaque vue */
 .calc.cfg .card h2{font-size:10.5px}
 .calc.cfg .row{margin-top:3px}
 .calc.cfg .row label{font-size:11.5px}
@@ -509,9 +506,6 @@ header .toast.show{transform:none}
 
 /* bouton Auto + note : dans la barre du haut, ou en bas à gauche de la grande vue quand une vue est agrandie */
 .autoDock{display:flex;align-items:center;gap:10px;min-width:0}
-.card.full .autoDock{position:absolute;left:15px;bottom:12px;z-index:6;gap:0}
-.card.full .autoDock .toast,.card.full .autoDock .toast.show{left:0;top:auto;bottom:calc(100% + 6px);transform:none;font-size:13px;padding:7px 14px}
-.card.full .autoDock .autoMsg{top:auto;bottom:-2px}
 /* vue de face agrandie : « Écran couvert » et « Pixels perdus » se décalent à droite du bouton */
 .viz.fs.fs-face .card.face.full .hud .hg.st{left:90px;bottom:22px}
 
@@ -851,7 +845,6 @@ nav button .vpIcon{width:50px;height:46px;stroke-width:1.9}      /* icône VP : 
 nav button:not(.on) .vpTop{stroke:currentColor}      /* icône VP non sélectionnée : tout en gris, comme les autres menus */
 nav button:not(.on) .vpBase{fill:currentColor;stroke:currentColor}
 nav button.on{box-shadow:inset 0 0 0 1.5px var(--acc)}      /* menu sélectionné : contour bleu */
-.simVals .simItem,.simFull .simItem,.simVals .simUndo,.simFull .simUndo,.simVals .simPlus,.simFull .simPlus,.simVals .simPickTxt,.simFull .simPickTxt,.simVals .simRedBtn,.simFull .simRedBtn{pointer-events:auto}      /* texte vert cliquable : un appui désactive les valeurs (le texte de la vue agrandie laisse sinon passer les appuis vers le dessin) */
 
 /* version verticale « gravée » dans le menu latéral, centrée entre Projets et Réglages (haut des lettres à gauche) */
 nav .sp{display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -1106,182 +1099,23 @@ nav .navVer{pointer-events:auto;cursor:pointer}
 .simItem{cursor:pointer}
 .simItem.simSel{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}      /* valeur choisie : soulignée, sa surbrillance est dans les vues */
 
-/* flèche jaune à rebours : rappelle la dernière valeur jaune retirée (à droite des 3 valeurs vertes) */
-.simUndo{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;cursor:pointer;color:#ebce15}
-.simUndo:hover{background:rgba(235,206,21,.16)}
-.viz .simUndo svg,.simUndo svg{width:16px;height:16px;fill:none;stroke:#ebce15;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 
-/* paramètre libre : « + » rouge à droite des valeurs vertes, ligne choisie en rouge, message clignotant avec case rouge alternante */
-.simPlus{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;cursor:pointer;color:#1552eb;font-size:22px;font-weight:800;line-height:1}
-.simPlus:hover{background:rgba(21,82,235,.16)}
-.m.pick{border-radius:10px;border-bottom-color:transparent;box-shadow:inset 0 0 0 2px #1552eb}
 .m .ck.on.pick{background:#1552eb;border-color:#1552eb}
-.m .pickGo{background:#1552eb;border-color:#1552eb;color:#fff}
-.pickMsgBar{display:inline-flex;align-items:center;gap:8px;color:#1552eb;font-weight:700;font-size:12.5px;animation:repBlink 1.4s ease-in-out infinite}
-.pickCk{width:16px;height:16px;box-sizing:border-box;border:1.5px solid #1552eb;border-radius:4px;display:grid;place-items:center;animation:pickCkAlt 1.4s steps(1,end) infinite}
-.pickCk::after{content:"";width:8px;height:4px;border:2px solid #fff;border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px);opacity:0;animation:pickCkMk 1.4s steps(1,end) infinite}
-@keyframes pickCkAlt{0%,49.9%{background:transparent}50%,100%{background:#1552eb}}
-@keyframes pickCkMk{0%,49.9%{opacity:0}50%,100%{opacity:1}}
-@media (prefers-reduced-motion:reduce){.pickMsgBar,.pickCk,.pickCk::after{animation:none}}
-.simUndo.red{color:#ff4d4f}
-.simUndo.red:hover{background:rgba(255,77,79,.16)}
-.viz .simUndo.red svg,.simUndo.red svg{stroke:#ff4d4f}
 
-/* paramètre rouge : bouton rouge à gauche des valeurs vertes ; fenêtre qui coulisse latéralement en 0,8 s sur la zone des valeurs */
 .simVals,.simFull{position:relative}
 .simVals,.simFull:not(:empty){overflow:hidden}
-.simRedBtn{width:20px;height:20px;border-radius:50%;border:2px solid #1552eb;background:transparent;padding:0;flex:none;align-self:center;cursor:pointer;margin-right:8px;transition:background .3s,box-shadow .3s}
-.redOpen > .simRedBtn{background:#1552eb;box-shadow:0 0 0 3px rgba(21,82,235,.25)}
-.simGrn{flex:1;min-width:0;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:2px 22px;transition:opacity .8s ease}
-.redOpen > .simGrn{opacity:0;pointer-events:none}
-.simRedWin{position:absolute;top:0;bottom:0;left:30px;right:0;display:flex;align-items:center;justify-content:center;gap:12px;color:#1552eb;transform:translateX(105%);transition:transform .8s ease;pointer-events:none}
-.redOpen > .simRedWin{transform:none;pointer-events:none}
-.simRedWin > *{pointer-events:auto}
-.redOpen > .simRedWin > *{pointer-events:auto}
-.simRedWin em{font-style:normal;opacity:.9}
-.simPickTxt{cursor:pointer;font-weight:700;animation:repBlink 1.4s ease-in-out infinite}
-.simPickTxt:hover{text-decoration:underline}
-@media (prefers-reduced-motion:reduce){.simGrn,.simRedWin{transition:none}.simPickTxt{animation:none}}
-.m.pick .nmTxt{color:#1552eb}      /* nom du paramètre rouge */
-.simProbeTxt{cursor:pointer}
-/* bouton rouge : 3 rectangles de largeur dégressive (40 px au total, le double de l'ancien rond de 20 px) */
-.simRedBtn{width:40px;height:20px;border:0;border-radius:0;padding:0;margin-right:10px;flex:none;align-self:center;cursor:pointer;opacity:.7;box-shadow:none;
-  background:linear-gradient(#1552eb,#1552eb) 0 0/100% 5px no-repeat,linear-gradient(#1552eb,#1552eb) 0 50%/68% 5px no-repeat,linear-gradient(#1552eb,#1552eb) 0 100%/36% 5px no-repeat;transition:opacity .3s,filter .3s}
-.simRedBtn:hover{opacity:1}
-.redOpen > .simRedBtn{opacity:1;background:linear-gradient(#1552eb,#1552eb) 0 0/100% 5px no-repeat,linear-gradient(#1552eb,#1552eb) 0 50%/68% 5px no-repeat,linear-gradient(#1552eb,#1552eb) 0 100%/36% 5px no-repeat;box-shadow:none;filter:drop-shadow(0 0 4px rgba(21,82,235,.8))}
-.simRedWin{left:52px}
-/* bouton rouge : 3 rectangles qui se succèdent de gauche à droite (un carré de 20 px, puis deux rectangles plus étroits : 11 px et 5 px), 40 px au total */
-.simRedBtn,.redOpen > .simRedBtn{background:linear-gradient(#1552eb,#1552eb) 0 0/20px 100% no-repeat,linear-gradient(#1552eb,#1552eb) 22px 0/11px 100% no-repeat,linear-gradient(#1552eb,#1552eb) 35px 0/5px 100% no-repeat}
 
-/* paramètre sélectionnable (ex-rouge) : couleur #1552eb partout — bouton, fenêtre, message de choix, ligne du mode édition */
-/* bouton à rectangles dégressifs, taille divisée par 2 : 20 × 10 px (carré de 10 px à gauche, puis 5,5 px et 2,5 px) */
-.simRedBtn{width:20px;height:10px;margin-right:10px}
-.simRedBtn,.redOpen > .simRedBtn{background:linear-gradient(#1552eb,#1552eb) 0 0/10px 100% no-repeat,linear-gradient(#1552eb,#1552eb) 11px 0/5.5px 100% no-repeat,linear-gradient(#1552eb,#1552eb) 17.5px 0/2.5px 100% no-repeat}
-.simRedWin{left:34px}
-/* bouton : 1 carré suivi de 3 rectangles dégressifs, taille +30 % (26 × 13 px) : carré 13 px, puis 5, 3 et 2 px, 1 px d'écart */
-.simRedBtn{width:26px;height:13px;margin-right:10px}
-.simRedBtn,.redOpen > .simRedBtn{background:linear-gradient(#1552eb,#1552eb) 0 0/13px 100% no-repeat,linear-gradient(#1552eb,#1552eb) 14px 0/5px 100% no-repeat,linear-gradient(#1552eb,#1552eb) 20px 0/3px 100% no-repeat,linear-gradient(#1552eb,#1552eb) 24px 0/2px 100% no-repeat}
-.simRedWin{left:40px}
-/* bouton : 4 cercles pleins de même hauteur (13 px) qui se chevauchent de gauche à droite, chacun passant derrière le précédent (liseré de la couleur du fond) : largeurs visibles dégressives 13 · 6,5 · 4 · 2,5 px */
-.simRedBtn,.redOpen > .simRedBtn{background:
-  radial-gradient(circle at 6.5px 50%,#1552eb 6.5px,var(--bg) 6.5px 7.5px,transparent 7.5px) no-repeat,
-  radial-gradient(circle at 13px 50%,#1552eb 6.5px,var(--bg) 6.5px 7.5px,transparent 7.5px) no-repeat,
-  radial-gradient(circle at 17px 50%,#1552eb 6.5px,var(--bg) 6.5px 7.5px,transparent 7.5px) no-repeat,
-  radial-gradient(circle at 19.5px 50%,#1552eb 6.5px,transparent 6.5px) no-repeat}
-/* bouton à 4 cercles : rétracté (menu fermé) = cercles serrés qui se chevauchent ; déployé (menu en place) = le 1er cercle reste fixe, les 3 autres s'éloignent vers la droite en se chevauchant légèrement (2 px) ; transition de 0,8 s comme le menu */
-.simRedBtn,.redOpen > .simRedBtn{
-  background-image:
-    radial-gradient(circle at 7.5px 50%,#1552eb 6.5px,var(--bg) 6.5px 7.5px,transparent 7.5px),
-    radial-gradient(circle at 7.5px 50%,#1552eb 6.5px,var(--bg) 6.5px 7.5px,transparent 7.5px),
-    radial-gradient(circle at 7.5px 50%,#1552eb 6.5px,var(--bg) 6.5px 7.5px,transparent 7.5px),
-    radial-gradient(circle at 7.5px 50%,#1552eb 6.5px,var(--bg) 6.5px 7.5px,transparent 7.5px);
-  background-size:15px 100%;background-repeat:no-repeat}
-.simRedBtn{width:26px;background-position:-1px 0,5.5px 0,9.5px 0,12px 0;transition:background-position .8s ease,width .8s ease,opacity .3s,filter .3s}
-.redOpen > .simRedBtn{width:46px;background-position:-1px 0,10px 0,21px 0,32px 0}
-.simRedWin{transition:transform .8s ease,left .8s ease}
-.redOpen > .simRedWin{left:58px}
-@media (prefers-reduced-motion:reduce){.simRedBtn,.simRedWin{transition:none}}
 
-/* étoile des favoris (à droite de chaque ligne) : vide par défaut, pleine et de la couleur de la ligne quand c'est un favori */
-.m .fav,.m .fav0{width:24px;height:24px;display:grid;place-items:center;margin-left:4px}
-.m .fav{cursor:pointer;color:var(--mut);border-radius:50%}
-.m .fav svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}
-.m .fav:hover{background:rgba(255,255,255,.06)}
-.m .fav.on svg{fill:currentColor}
-/* menu des configs : séparateur avant « Favoris » ; aperçu des Favoris : ligne bleutée du favori par défaut avec le bouton à cercles rétracté (rappel visuel, non cliquable) */
-.smCfgSep{height:1px;background:var(--line);margin:4px 0}
-.simRedIcon{display:inline-block;flex:none;width:26px;height:13px;opacity:.95;background-image:radial-gradient(circle at 7.5px 50%,#1552eb 6.5px,var(--rb,var(--bg)) 6.5px 7.5px,transparent 7.5px),radial-gradient(circle at 7.5px 50%,#1552eb 6.5px,var(--rb,var(--bg)) 6.5px 7.5px,transparent 7.5px),radial-gradient(circle at 7.5px 50%,#1552eb 6.5px,var(--rb,var(--bg)) 6.5px 7.5px,transparent 7.5px),radial-gradient(circle at 7.5px 50%,#1552eb 6.5px,var(--rb,var(--bg)) 6.5px 7.5px,transparent 7.5px);background-size:15px 100%;background-repeat:no-repeat;background-position:-1px 0,5.5px 0,9.5px 0,12px 0}
-.smProbeRow{--rb:#18284f;background:#18284f;border-radius:8px;padding:6px 10px;margin:0 -6px 4px;gap:12px;cursor:pointer;border:1px solid rgba(21,82,235,.55)}
-.smProbeRow .smPrbTxt{flex:1;min-width:0;font-size:13px;color:#8fb0ff;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.smProbeRow em{font-style:normal;opacity:.95}
 
-/* favori par défaut : ligne cliquable (graphique) + « modifier » ; étoile entourée ; icône dans les lignes qui le contiennent */
-.smProbeRow.sel{--rb:#22397a;background:#22397a;border-color:#1552eb;padding:6px 10px;margin:0 -6px 4px}
-.smPrbMod{flex:none;font-size:12px;font-weight:700;color:#8fb0ff;text-decoration:underline;cursor:pointer;padding:2px 4px}
-.smPrbMod:hover{color:#c6d6ff}
-.m .fav.dflt{box-shadow:inset 0 0 0 1.5px currentColor}
-.simRedIcon.mini{transform:scale(.72);transform-origin:left center;margin-right:-8px}
-.smSelNm.cb{color:#1552eb}
-.m .f .simRedIcon{margin-left:8px;margin-right:-8px;vertical-align:-2px}      /* icône du favori par défaut, juste après le stylo du nom */
-.smNavBar span.cb{color:#1552eb}      /* compteur 1/x : le favori par défaut est en bleu */
-.simAct button.simProbeGo{width:36px;height:28px;display:grid;place-items:center;margin-left:2px}      /* icône du favori par défaut, à droite de l'œil */
-.simAct button.simProbeGo .simRedIcon{opacity:.85}
-.simAct button.simProbeGo:hover .simRedIcon{opacity:1}
-.simAct button.simFavGo{margin-left:2px}      /* étoile à droite de l'œil : charge les Favoris */
-.simAct button.simFavGo svg,.simAct button.simFavGo:not(:disabled) svg{stroke:var(--acc);stroke-width:1.9}
-.simAct button.simFavGo.on svg{fill:var(--acc)}
-.simNavBox.nvb .simPos{color:#1552eb}      /* favori par défaut : compteur et flèches en bleu */
-.simNavBox.nvb .simNav svg{stroke:#1552eb}
-.simNavBox.nvb .simNav button:hover:not(:disabled){background:rgba(21,82,235,.18)}
-/* bouton / icône du favori n°1 : 4 étoiles de même taille (13 px de haut) qui se superposent (même principe que les 4 ronds) */
-.simRedBtn,.redOpen > .simRedBtn,.simRedIcon{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0.6 1 22.8 21.4'><path d='M12 2l3.2 6.6 7.3 1-5.3 5.1 1.3 7.3L12 18.4l-6.5 3.6 1.3-7.3L1.5 9.6l7.3-1z' fill='%231552eb' stroke='%230f1216' stroke-width='1.5' stroke-linejoin='round'/></svg>"),url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0.6 1 22.8 21.4'><path d='M12 2l3.2 6.6 7.3 1-5.3 5.1 1.3 7.3L12 18.4l-6.5 3.6 1.3-7.3L1.5 9.6l7.3-1z' fill='%231552eb' stroke='%230f1216' stroke-width='1.5' stroke-linejoin='round'/></svg>"),url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0.6 1 22.8 21.4'><path d='M12 2l3.2 6.6 7.3 1-5.3 5.1 1.3 7.3L12 18.4l-6.5 3.6 1.3-7.3L1.5 9.6l7.3-1z' fill='%231552eb' stroke='%230f1216' stroke-width='1.5' stroke-linejoin='round'/></svg>"),url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0.6 1 22.8 21.4'><path d='M12 2l3.2 6.6 7.3 1-5.3 5.1 1.3 7.3L12 18.4l-6.5 3.6 1.3-7.3L1.5 9.6l7.3-1z' fill='%231552eb' stroke='%230f1216' stroke-width='1.5' stroke-linejoin='round'/></svg>");background-size:15px 100%;background-repeat:no-repeat}
-/* fenêtre des favoris : flèches ‹ › , valeur cliquable (soulignée = surbrillance active), œil à droite de la valeur */
-.simRedNav{cursor:pointer;font-size:24px;line-height:1;font-weight:800;padding:0 4px;color:#1552eb;user-select:none}
-.simRedNav.off{opacity:.3;cursor:default}
-.simRedNav:not(.off):hover{color:#5b86ff}
-.simProbeTxt.simSel{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
-.simRedEye{cursor:pointer;display:inline-flex;align-items:center;width:24px;height:24px;justify-content:center;border-radius:50%}
-.simRedEye:hover{background:rgba(21,82,235,.18)}
-.viz .simRedEye svg,.simRedEye svg{width:18px;height:18px;fill:none;stroke:#1552eb;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-/* fenêtre des favoris : flèches ‹ › fixées tout à droite (elles ne bougent pas quand la valeur change) ; la valeur et l'œil se centrent dans la place restante */
-.simRedWin{padding-right:72px;box-sizing:border-box}
-.simRedWin .simRedNav{position:absolute;top:50%;transform:translateY(-50%)}
-.simRedWin .simRedNav[data-d="-1"]{right:38px}
-.simRedWin .simRedNav[data-d="1"]{right:8px}
-/* bouton des 4 étoiles (valeurs vertes) : taille +30 % (étoiles de 17 px de haut) */
-.simRedBtn{width:34px;height:17px;background-size:19.5px 100%;background-position:-1.3px 0,7.2px 0,12.4px 0,15.6px 0}
-.redOpen > .simRedBtn{width:60px;background-position:-1.3px 0,13px 0,27.3px 0,41.6px 0}
-.simRedWin{left:52px}
-.redOpen > .simRedWin{left:76px}
-/* aperçu des Favoris : icône des 4 étoiles déployées à droite du titre ; « N°1 » sur la ligne du favori n°1 */
 .smCfgHead{display:flex;align-items:center;justify-content:center;gap:14px;max-width:100%}
-.smCfgIco[hidden]{display:none}
-.simRedIcon.dep{width:46px;background-position:-1px 0,10px 0,21px 0,32px 0}
-.smPrbNo{flex:none;font-weight:800;font-size:13px;color:#fff;background:#1552eb;border-radius:6px;padding:2px 7px;letter-spacing:.03em}
-.favLock > .simRedBtn{cursor:default;pointer-events:none}      /* sous « Favoris » : étoiles déployées, non rétractables */
-/* « N°1 » entre les deux flèches (fixé à droite) */
-.simRedWin{padding-right:110px}
-.simRedWin .simRedNav[data-d="-1"]{right:78px}
-.simRedWin .simRedNo{position:absolute;top:50%;transform:translateY(-50%);right:36px;width:38px;text-align:center;cursor:pointer;font-size:13px;font-weight:800;color:#1552eb;user-select:none;opacity:.65}
-.simRedWin .simRedNo.on{opacity:1}
-.simRedWin .simRedNo:hover{opacity:1}
-.m .f .smPrbNo{margin-left:8px;font-size:11.5px;padding:1px 6px;vertical-align:middle}      /* « N°1 » sur la ligne du favori n°1 (Calculs détaillés, mode édition) */
-/* config « Favoris » : lignes, étoiles et compteurs en bleu ; le n°1 (1/x) est plus foncé */
-.m.gb .n,.m.gb .nmTxt,.m.eb .nmTxt{color:#4da3ff}
-.m.gb .dot{background:#4da3ff}
-.simNavBox.nvl .simPos{color:#4da3ff}
-.simNavBox.nvl .simNav svg{stroke:#4da3ff}
-.smNavBar span.cl{color:#4da3ff}
-.smRow .smLbl.cl,.smRow input.cl{color:#4da3ff}
-.smSelNm.cl{color:#4da3ff}
-.simRedWin{padding-right:122px}
-.simRedWin .simRedNav[data-d="-1"]{right:88px}
-.simRedWin .simRedNo{right:34px;width:50px;color:#4da3ff;opacity:1}
-.simRedWin .simRedNo.on{color:#1552eb}
-.smRow .smPrbNo.mark{font-size:11px;padding:1px 6px;flex:none}      /* aperçu : « N°1 » sur la ligne du favori n°1 */
-.smFavMark{flex:none;display:inline-flex;align-items:center}      /* aperçu : étoile bleue sur les autres favoris */
-.smFavMark svg{width:15px;height:15px;fill:#4da3ff;stroke:#4da3ff;stroke-width:1.5;stroke-linejoin:round}
-.apBtn.favBack{border-color:#4da3ff;color:#4da3ff}      /* revenir à la configuration (favoris seuls affichés) */
-/* revenir à la configuration : texte seul (sans contour) dans le bandeau des onglets, à droite sous l'étoile, clignotement marqué */
-.tabs .favBackTxt{margin-left:auto;align-self:center;flex:none;white-space:nowrap;font-size:13px;font-weight:700;color:#4da3ff;cursor:pointer;padding:0 6px;animation:favBlink 1s ease-in-out infinite}
-@keyframes favBlink{0%,100%{opacity:1}50%{opacity:.12}}
-@media (prefers-reduced-motion:reduce){.tabs .favBackTxt{animation:none}}
-.m .fav svg{stroke:var(--fs,currentColor)}      /* contour : bleu des favoris ; remplissage (si ligne de la config active) : couleur de la ligne */
-.m .fav.on svg{fill:currentColor}
-.m .fav.on svg{stroke-width:2.3}      /* contour bleu bien visible autour du remplissage vert / jaune */
-.m .fav.on svg{stroke-width:1.8}
 /* lignes vertes / jaunes : tout le texte de la ligne prend la couleur (référence, formule, nom, valeur) */
 .m.g1 .f,.m.g1 > b{color:#14c408}
 .m.g2 .f,.m.g2 > b{color:#ebce15}
-/* étoiles des lignes qui ne sont pas des favoris : grises, très discrètes */
-.m .fav:not(.isfav){color:#5a626c;opacity:.38}
-.m .fav:not(.isfav) svg{stroke-width:1.5}
-.m .fav:not(.isfav):hover{opacity:.8;background:transparent}
-.smCfgList{max-height:none;overflow:visible}      /* « Favoris » toujours visible : seule la liste des configs défile */
+.smCfgList{max-height:none;overflow:visible}      /* seule la liste des configs défile */
 .smCfgScroll{max-height:136px;overflow:auto}
 .smList .smSep{flex:none;height:1px;background:var(--line);margin:3px 0}      /* barre entre les 3 premières lignes et les suivantes */
 /* mode édition : nom de la configuration en cours d'édition (à la place du menu déroulant), bleu clignotant */
-.simEditName{flex:1;min-width:0;text-align:center;font-size:17px;font-weight:800;color:var(--acc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:favBlink 1.6s ease-in-out infinite}
+.simEditName{flex:1;min-width:0;text-align:center;font-size:17px;font-weight:800;color:var(--acc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:nameSoft 3s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){.simEditName{animation:none}}
 /* mode édition : « Retour » à la place de « Fermer » ; nom de la config centré dans la barre, 30 % plus grand, clignotement très discret */
 #detBack{display:none}
@@ -1289,8 +1123,7 @@ nav .navVer{pointer-events:auto;cursor:pointer}
 #details.edit #detClose{display:none}
 .simEditName{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);flex:none;max-width:34%;font-size:22px;pointer-events:none;animation:nameSoft 3s ease-in-out infinite}
 @keyframes nameSoft{0%,100%{opacity:1}50%{opacity:.82}}
-/* mode édition : barre du haut réorganisée — Mode édition | disquette, annuler/rétablir, œil, étoile (à gauche) · nom de la config centré, flèches x/x à sa droite · Retour à droite ; plus de plein écran */
-#details.edit #detFull{display:none}
+/* mode édition : barre du haut réorganisée — Mode édition | disquette, annuler/rétablir, œil, étoile (à gauche) · nom de la config centré, flèches x/x à sa droite · Retour à droite  */
 .simEdLeft{display:flex;align-items:center;gap:2px;flex:none}
 .simEdBar{width:1px;height:24px;background:var(--line);margin:0 10px 0 4px}
 .simEditName{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:block;max-width:none;overflow:visible;white-space:nowrap;font-size:22px;font-weight:800;color:var(--acc);pointer-events:none;animation:nameSoft 3s ease-in-out infinite}
@@ -1298,24 +1131,10 @@ nav .navVer{pointer-events:auto;cursor:pointer}
 #details.edit #detBack{height:28px;padding:0 10px;border:1px solid var(--acc);border-radius:8px;background:rgba(255,255,255,.08);color:#c3ccd5;font-size:12px;font-weight:700;display:block}
 #details.edit .simHead{position:static;transform:none;flex:1;min-width:0;justify-content:flex-start}      /* mode édition : le bloc de gauche s'aligne à gauche (le nom, lui, est centré sur la barre) */
 .simEdBar{background:rgba(160,185,220,.55);width:1.5px;height:26px}      /* barre verticale après « Mode édition » */
-#details:not(.edit) .m .fav{pointer-events:none;cursor:default}      /* étoiles non cliquables hors mode édition */
-/* aperçu des favoris en mode sélectif : message, cases à cocher à gauche des favoris */
-.smSelMsg{margin:4px 0 10px;font-size:13px;line-height:1.4;color:var(--mut)}
-.smCk{flex:none;width:18px;height:18px;box-sizing:border-box;border:1.5px solid var(--mut);border-radius:4px;display:grid;place-items:center;cursor:pointer}
-.smCk.on{background:var(--acc);border-color:var(--acc)}
-.smCk.on::after{content:"";width:8px;height:4px;border:2px solid #04111f;border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
-.smProbeRow .smCk{margin-right:2px}
 .smTitle[hidden]{display:none}
-.smSelMode .smList .smRow:not(.smProbeRow){border-bottom:1px solid rgba(255,255,255,.09);border-radius:0;padding-bottom:7px}      /* mode sélectif : trait discret sous chaque ligne */
-.smCfgHead.rev{flex-direction:row-reverse}      /* étoiles à gauche du texte */
-.smCfgFor{color:#1552eb}      /* nom de la config en bleu plus foncé */
-.smSelMode .smList .smRow{cursor:pointer}      /* mode sélectif : toute la ligne est cliquable */
 .m.nocfg .n,.m.nocfg .f,.m.nocfg > b{color:#004969}      /* ligne qui ne fait pas partie de la configuration active : textes en bleu terne */
 .smCfgOpt.loaded,.smCfgOpt.loaded .smCfgIn{color:var(--acc);font-weight:800}      /* menu de l'aperçu : la config active en bleu */
 .smCfgOpt.loaded .smCfgIn{border-color:var(--acc)}
-.m .ck.on.cb{background:#4da3ff;border-color:#4da3ff}      /* config « Favoris » en mode édition : cases cochées en bleu (ni vert ni jaune) */
-.m.pn1 .n,.m.pn1 .nmTxt{color:#1552eb;font-weight:800}      /* favori n°1 : bleu plus foncé (comme le fond de « N°1 ») */
-.m.pn1 .dot{background:#1552eb}
 .tabs button.tG:not(.tY):not(.tR){}      /* onglet avec des valeurs sélectionnées dans la config active */
 /* onglets : contour en 1, 2 ou 3 couleurs égales (vert / jaune des valeurs, bleu des favoris) ; onglet actif : fond bleu, texte blanc */
 .tabs button.tM:not(.tY):not(.tR){position:relative;border-color:transparent}
@@ -1354,7 +1173,7 @@ nav .navVer{pointer-events:auto;cursor:pointer}
    • compact (m3c) : barre des fenêtres, Affichage, ligne de 4 fenêtres en mosaïque, Réglages sur 2 colonnes, fenêtre Données.
    • plein écran (m3f) : mosaïque (1 grande + colonne), bandeau données en bas, Affichage / Réglages en volets à droite.
    --hdr3d = hauteur réelle de la barre du haut (mesurée par layout3d.js). */
-.stage3d,.side3d,.msg3d,.hint3d,.dataBand,.show3d{display:none}
+.stage3d,.side3d,.msg3d,.hint3d,.dataBand{display:none}
 main.m3d{--ww:clamp(260px,21vw,360px);--wd:clamp(210px,16vw,260px);--vOn:1;--pOn:1;--dOn:1;--p3dw:calc(var(--ww) * (var(--vOn) + var(--pOn)) + var(--wd) * var(--dOn));--hdr3d:66px;grid-template-rows:1fr}      /* largeur du bloc de droite = une colonne par fenêtre affichée */
 main.m3d.p3noviews{--vOn:0}
 main.m3d.p3noparams{--pOn:0}
@@ -1419,18 +1238,15 @@ main.m3d.p3off .calc.m3d .side3d{display:none}
 /* fenêtres de droite */
 /* côte à côte : 3D | Vues | Réglages | Affichage */
 .win3d{display:flex;flex-direction:column;flex:none;width:var(--ww);min-height:0;min-width:0}
-#win3dDisp{width:var(--wd)}
 .win3d:not(.hide3d)+.win3d{border-left:1px solid var(--line)}
 .win3d .wh{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border-bottom:1px solid var(--line);flex:none;background:var(--panel)}
 .win3d .wh b{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);font-weight:600;margin-right:auto}
 .win3d .wx{width:28px;height:28px;border-radius:8px;border:0;background:transparent;color:var(--mut);font-size:14px;padding:0}
 .win3d .wb{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:10px;display:flex;flex-direction:column;gap:12px}
 .win3d .wb>*{flex:none}
-#win3dDisp .wb{overflow:visible}      /* les volets déroulants des verrous dépassent de la fenêtre */
 .win3d .viz{display:flex;flex-direction:column;gap:10px;grid-template-columns:none;grid-template-rows:none;flex:none;min-height:auto}
 .win3d .viz .card{flex:none;height:clamp(150px,24vh,220px);grid-row:auto;grid-column:auto}
 .win3d .viz .card.face{height:clamp(160px,26vh,240px)}
-.win3d .viz .expand{width:28px;height:28px;top:5px;right:5px;border-radius:8px;font-size:13px;padding:0}
 .win3d .col.params{overflow:visible;flex:none;min-height:auto}
 .hide3d{display:none!important}
 .calc.m3d .viz .hud:not(.on3),.calc.m3d .viz .legend,.calc.m3d .card.face .dispSel,.calc.m3d .card.face .refSel{display:none!important}
@@ -1441,16 +1257,6 @@ main.m3d.p3off .calc.m3d .side3d{display:none}
 .calc.m3d .hud.on3 .chip.lockd{background:var(--lock)}
 .calc.m3d .col.out .hud.on3{position:relative;left:auto;top:auto;right:auto;order:0;align-self:flex-start;pointer-events:auto}
 
-/* fenêtre AFFICHAGE : éléments de la scène 3D, verrous, cases du bandeau données */
-.dispBox{display:flex;flex-direction:column;gap:16px}
-.dsec h4{margin:0 0 7px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);font-weight:600}
-.dispBox .show3d,.kchk{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.dispBox .show3d button,.kchk button{height:32px;padding:0 13px;border-radius:999px;border:1px solid rgba(139,152,166,.35);background:rgba(23,28,34,.55);color:var(--mut);font-size:12.5px;font-weight:500}
-.dispBox .show3d button.on,.kchk button.on,.show3d .info3d[aria-pressed=true]{border-color:var(--acc);color:var(--acc);background:rgba(77,163,255,.14)}
-.show3d .info3d{width:32px;padding:0!important;font-style:italic;font-family:Georgia,serif;font-weight:700}
-.kchk button::before{content:"";display:inline-block;width:11px;height:11px;margin-right:7px;border:1.5px solid currentColor;border-radius:4px;vertical-align:-1px;opacity:.7}
-.kchk button.on::before{background:var(--acc);border-color:var(--acc);opacity:1}
-.locksHome .locks{flex-wrap:wrap}
 
 /* raccourcis de caméra (en haut à droite de la scène ; visibles en mode caméra) et onglets verticaux des fenêtres (au bord droit, au milieu) */
 .tb3d{position:absolute;top:var(--hdr3d);right:44px;z-index:5;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
@@ -1481,9 +1287,7 @@ main.m3d.p3off .calc.m3d .side3d{display:none}
 .calc.m3f .m3Data{padding:0 10px 8px 0}
 .calc.m3f .f3Main .side3d{position:absolute;right:0;top:0;bottom:0;z-index:8;box-shadow:-10px 0 28px rgba(0,0,0,.45)}
 .calc.m3f .f3Main .win3d{width:min(var(--ww),86vw)}
-.calc.m3f .f3Main #win3dDisp{width:min(var(--wd),86vw)}
-.calc.m3f .f3Main .mw .win3d,.calc.m3f .f3Main .mw #win3dDisp{width:auto}      /* Réglages / Affichage chargées dans la mosaïque des vues élargies : elles prennent la taille de leur fenêtre (volets : plein écran seulement) */
-.calc.m3max .f3Wrap .n3St{display:none}                                          /* plein écran : pas d'onglets de bord, ce sont les volets */
+.calc.m3f .f3Main .mw .win3d{width:auto}      /* Réglages chargée dans la mosaïque des vues élargies : elles prennent la taille de leur fenêtre (volets : plein écran seulement) */
 .calc.m3f .f3Main .tabs3d{right:var(--p3dw);z-index:9}
 
 /* fenêtres de la mosaïque */
@@ -1516,7 +1320,7 @@ body.mzDrag{cursor:grabbing;user-select:none;-webkit-user-select:none}
 /* vues et scène dans une fenêtre (les cartes ont quitté .viz : on reprend ses règles) */
 .mw .card{padding:0;overflow:hidden;min-height:0;flex:1;margin:0;border:0;border-radius:0}
 .mw .card svg{width:100%;height:100%;display:block}
-.mw .card .expand,.mw .card .hud,.mw .card .legend{display:none!important}
+.mw .card .hud,.mw .card .legend{display:none!important}
 .mw .card .tag{font-size:0;left:8px;top:6px}
 .mw .card .faceRef{font-size:11px}
 .mw .dispTop{right:12px;bottom:8px;top:auto}
@@ -1532,8 +1336,7 @@ body.mzDrag{cursor:grabbing;user-select:none;-webkit-user-select:none}
 .mzs-h>.mw.mwFold{align-self:flex-start;min-width:150px}
 .mzSep-off{pointer-events:none}
 .mzSep-off::after,.mzSep-off::before{display:none}
-.mw-disp .mwb,.mw-data .mwb{padding:10px 12px;overflow:auto}
-.mw-disp .dispBox{flex-direction:row;flex-wrap:wrap;gap:12px 36px;align-items:flex-start}
+.mw-data .mwb{padding:10px 12px;overflow:auto}
 .dataBox{display:flex;flex-direction:column;gap:8px;min-width:0}
 @keyframes mwFlash{0%{box-shadow:0 0 0 3px var(--acc)}100%{box-shadow:0 0 0 3px transparent}}
 .mwFlash{animation:mwFlash 1.1s ease-out}
@@ -1600,21 +1403,6 @@ main.m3d .m3modes{display:flex}
 /* page VP : le bouton « viser le centre de l'écran » grisé (déjà centré) reste touchable : l'appui affiche son nom */
 .calc.m3d .dragSel button.aimBtn.idle{pointer-events:auto}
 
-/* vues élargies, une fenêtre en plein écran : elle occupe toute la zone ; un volet (Vues, Réglages ou Affichage) s'ouvre à sa droite, un seul à la fois */
-.calc.m3f.m3max .f3Main{padding-right:0}
-.calc.m3f.m3max .f3Main .side3d{position:relative;right:auto;top:auto;bottom:auto;box-shadow:none;flex:none;background:var(--bg)}
-.calc.m3f.m3max .tabs3d{display:flex}
-.calc.m3f.m3max .tabs3d [data-t=views]{display:block}
-/* vue plein écran : au-dessus de tout (barre du haut, barre Fenêtres, menu de gauche) ; on en sort par la croix de la fenêtre */
-.calc.m3max #m3Root{position:fixed;inset:0;z-index:40;height:auto;background:var(--bg);padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
-.calc.m3max .m3Bar{display:none}
-/* bouton d'agrandissement qui mène au plein écran : rouge (celui qui mène à la grande fenêtre des vues élargies reste gris) */
-.mwb2.hot{color:var(--bad)}
-.mwb2.hot:hover{background:rgba(255,93,93,.16);color:#ff8585}
-/* volet Vues du plein écran : les autres vues en colonne (fenêtres de la mosaïque du volet) */
-.calc.m3max .side3d .viz{display:none}
-.calc.m3max #viewsBody{display:flex;flex-direction:column;padding:8px;overflow:hidden}
-.calc.m3max #viewsBody .p3Col{flex:1;min-height:0}
 
 /* appui long sur un bouton de vue (1 s) : liseré qui se remplit, puis la disposition par défaut est rétablie */
 .m3modes .m3btn{position:relative;overflow:hidden;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
@@ -1649,26 +1437,194 @@ main.m3d .m3modes{display:flex}
 /* les sections Vues / Réglages / Affichage vivent dans une fenêtre de la mosaïque : leur propre titre disparaît */
 .mw .win3d{width:auto;flex:1;min-height:0;border:0}
 .mw .win3d>.wh{display:none}
-.mw #win3dDisp{width:auto}
-.mw #win3dDisp .wb{overflow:auto}
 .mw .win3d .wb>.viz{flex:1 1 0;min-height:0}
 .mw .win3d .viz{flex-direction:column}
 .mw .win3d .viz.row{flex-direction:row}
 .mw .win3d .viz .card{flex:1 1 0;height:auto;min-height:110px;min-width:0;padding:0;overflow:hidden;border:1px solid var(--line);border-radius:var(--r);margin:0}
 .mw .win3d .viz .card.face{height:auto}
-.mw .win3d .viz .card .expand{display:block!important}
 .mw .win3d .viz .card .tag{font-size:11px;left:12px;top:10px}
-.n3Wrap .mw-disp .mwb{padding:0;overflow:hidden}
-.n3Wrap .mw-disp .dispBox{flex-direction:column;flex-wrap:nowrap;gap:16px}
-.n3Wrap .win3d.wide .dispBox{flex-direction:row;flex-wrap:wrap;gap:12px 36px;align-items:flex-start}
 
 /* fenêtre Réglages rétractée par blocs : elle se réduit à son contenu au lieu de laisser un grand vide (hauteur plafonnée à la zone, défilement au-delà) */
 .mzs-h>.mw-params{align-self:flex-start;max-height:100%}
 .mzs-v>.mw-params{flex:0 1 auto!important}
 
-/* Affichage : choix de la vue qui reçoit les éléments (Faisceau, Position VP…) ; la vue choisie est en rouge */
-.dsec h4.vsel{display:flex;flex-wrap:wrap;align-items:center;gap:2px 12px}
-.vsel button{background:none;border:0;padding:3px 0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:var(--mut);cursor:pointer}
-.vsel button:hover{color:var(--txt)}
-.vsel button.on{color:#ff5d5d}
-#show3d[data-w=face] [data-k=beam],#show3d[data-w=side] [data-k=adv],#show3d[data-w=top] [data-k=adv],#show3d:not([data-w="3d"]) .info3d{display:none}
+
+/* ----- fenêtre agrandie par double-clic sur sa barre du haut (winzoom.js) : 80 % de l'application, au centre, le reste assombri ; clic en dehors ou nouveau double-clic : retour à sa place ----- */
+.wzBack{position:fixed;inset:0;z-index:54;background:transparent}      /* attrape l'appui en dehors (l'assombrissement est l'ombre de la fenêtre, qui passe au-dessus de tout) */
+.wz{position:fixed!important;left:10%!important;top:10%!important;right:auto!important;bottom:auto!important;width:80%!important;height:80%!important;max-width:none!important;max-height:none!important;min-width:0!important;min-height:0!important;
+  margin:0!important;transform:none!important;flex:none!important;z-index:55!important;align-self:auto!important;
+  border:1px solid var(--acc)!important;border-radius:var(--r)!important;box-shadow:0 0 0 200vmax rgba(5,8,12,.62),0 24px 70px rgba(0,0,0,.7)!important;animation:wzIn .18s ease-out;transition:none!important}
+@keyframes wzIn{from{opacity:.25}}      /* fondu seul : une mise à l'échelle fausserait la taille mesurée par les vues au premier dessin */
+.mw.wz>.mwb{display:flex!important;flex:1 1 auto!important;min-height:0;overflow:auto}      /* ligne de la vue compacte ou fenêtre rétractée : le contenu remplit la fenêtre agrandie */
+.mw.wz>.mwh{cursor:default}
+.viz .card.wz{padding:0;display:flex;flex-direction:column}
+.viz .card.wz>svg{flex:1;min-height:0;height:auto}
+.win3d.wz{background:var(--bg)}
+.win3d.wz>.wh .wx{display:none}
+#details.wz{width:80%!important}
+#details.wz .figs svg:not(.ic){height:min(40vh,480px)}
+.dhead{user-select:none;-webkit-user-select:none}
+#details.wz:not(.open){display:none}      /* panneau refermé pendant l'agrandissement : il disparaît aussitôt */
+.viz .card,.dataBand,#details .dhead,.win3d>.wh{touch-action:manipulation}      /* doigt : le double appui agrandit la fenêtre au lieu de zoomer la page */
+.dataBand.wz{flex-direction:column;background:var(--bg);padding:22px;overflow:auto}
+.dataBand.wz .dbTab{display:none}
+.dataBand.wz .dbIn{padding:0;gap:16px}
+.dataBand.wz .results{grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+.dataBand.wz .kpi{padding:14px 18px}
+.dataBand.wz .kpi small{font-size:14px}
+.dataBand.wz .kpi b{font-size:32px}
+.dataBand.wz .kpi span{font-size:15px}
+.dataBand.wz .simVals{font-size:16px}
+
+/* ----- barre du haut : œil (fenêtre Affichage, page VP) et cadenas (fenêtre Verrous, pages 2D et VP) ----- */
+.hIco{width:40px;height:40px;flex:none;display:grid;place-items:center;padding:0;border-radius:999px;border:1.5px solid var(--line);background:rgba(23,28,34,.85);color:var(--txt)}
+.hIco svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hIco:hover{border-color:var(--acc);color:var(--acc)}
+#eyeBtn{display:none}
+main.m3d #eyeBtn{display:grid}
+main.m3d #locks{display:none}      /* page VP : les pastilles de verrous laissent la place au cadenas */
+
+/* ----- fenêtres d'avant-plan (panels.js) : au centre, le reste assombri, contenu qui défile, menu en haut ----- */
+.pnlLayer{position:fixed;inset:0;display:grid;place-items:center}
+.pnlBack{position:fixed;inset:0;background:rgba(5,8,12,.62);animation:wzIn .18s ease-out}
+.pnl{position:relative;width:80vw;height:80vh;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--acc);border-radius:var(--r);box-shadow:0 24px 70px rgba(0,0,0,.7);overflow:hidden;animation:wzIn .18s ease-out}
+.pnl.pnlSmall{width:min(640px,88vw);height:auto;max-height:70vh}
+.pnlHead{display:flex;align-items:center;gap:8px;padding:0 8px 0 16px;height:46px;flex:none;border-bottom:1px solid var(--line);background:var(--panel2)}
+.pnlTitle{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--txt);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pnlFor{color:var(--mut);font-weight:600;text-transform:none;letter-spacing:0}
+.pnlSp{flex:1}
+.pnlX{width:36px;height:36px;border-radius:10px;border:0;background:transparent;color:var(--mut);font-size:17px;padding:0}
+.pnlX:hover{background:var(--panel);color:var(--txt)}
+.pnlMenu{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;row-gap:2px;padding:4px 16px 5px;flex:none;border-bottom:1px solid var(--line);font-size:12px;line-height:1.3;overflow:hidden}      /* menu compact : des mots à toucher, séparés par un point, sur une ligne (deux au plus) */
+.pnlMi{border:0;background:none;padding:2px 0;margin:0;font:inherit;font-weight:600;color:var(--mut);white-space:nowrap;cursor:pointer}
+.pnlMi+.pnlMi::before{content:"·";display:inline-block;margin:0 9px;color:var(--line);font-weight:700}
+.pnlMi:hover{color:var(--txt)}
+.pnlMi.on{color:var(--acc);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1.5px}
+.pnlBody{position:relative;flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:6px 18px 22px}
+@keyframes pnlFlash{0%{background:rgba(77,163,255,.16)}100%{background:transparent}}
+.pnlFlash{animation:pnlFlash 1.1s ease-out}
+
+/* fenêtre Affichage (display.js) : une section par fenêtre, des boutons à bascule */
+.dspSec,.lkSec{padding:14px 10px 16px;border-bottom:1px solid var(--line);border-radius:10px}
+.dspSec:last-child,.lkSec:last-child{border-bottom:0}
+.dspSec h3,.lkSec h3{margin:0;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--txt);font-weight:700;display:flex;align-items:center;gap:10px}
+.dspSub{margin:4px 0 10px;font-size:12px;color:var(--mut)}
+.dspChips,.lkChips{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+.dspChip{height:34px;padding:0 14px;border-radius:999px;border:1px solid rgba(139,152,166,.35);background:rgba(23,28,34,.55);color:var(--mut);font-size:13px;font-weight:500}
+.dspChip::before{content:"";display:inline-block;width:11px;height:11px;margin-right:8px;border:1.5px solid currentColor;border-radius:4px;vertical-align:-1px;opacity:.7}
+.dspChip.on{border-color:var(--acc);color:var(--acc);background:rgba(77,163,255,.14)}
+.dspChip.on::before{background:var(--acc);border-color:var(--acc);opacity:1}
+.dspSep{width:1.5px;height:22px;background:var(--line);margin:0 4px}
+
+/* fenêtre Verrous (app.js) : un bouton par paramètre (nom, valeur) ; violet = verrouillé ; le cadenas du groupe verrouille / libère tout le groupe */
+.lkSec h3{margin-bottom:10px}
+.lkGrp{width:32px;height:32px;display:grid;place-items:center;padding:0;border-radius:10px;border:1.5px solid var(--line);background:transparent;color:var(--mut)}
+.lkGrp.on{border-color:var(--lock);color:var(--lock);background:rgba(181,140,255,.14)}
+.lkGrp svg,.lkC svg,.zlkIco svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.lkC{display:flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-radius:999px;border:1.5px solid var(--line);background:var(--panel2);color:var(--txt);font-size:13px;font-weight:600}
+.lkC b{font-weight:600;color:var(--mut);font-variant-numeric:tabular-nums}
+.lkC:hover{border-color:var(--lock)}
+.lkC.on{background:var(--lock);border-color:var(--lock);color:#1a1030}
+.lkC.on b{color:#1a1030;opacity:.75}
+.lkOff{font-size:11px;letter-spacing:0;text-transform:none;font-weight:500;color:var(--mut)}
+.lkSec.off .lkChips{opacity:.6}
+/* fenêtre Verrous compacte : les groupes en cartes sur plusieurs colonnes, hauteur selon le contenu, sans défilement */
+.pnl.pnlLk{width:min(1180px,94vw);height:auto;max-height:92vh}
+.lkBody{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));grid-auto-flow:dense;gap:8px;padding:10px 12px 12px}
+.lkBody .lkSec,.lkBody .lkSec:last-child{padding:8px 10px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.lkBody .lkSec h3{margin:0 0 7px;font-size:11px;gap:7px}
+.lkBody .lkGrp{width:26px;height:26px;border-radius:8px}
+.lkBody .lkGrp svg{width:14px;height:14px}
+.lkBody .lkChips{gap:5px}
+.lkBody .lkC{height:30px;padding:0 10px;gap:5px;font-size:12px}
+.lkBody .lkC svg{width:13px;height:13px}
+.lkBody .lkOff{margin-left:auto;font-size:10.5px}
+
+/* fenêtre agrandie (winzoom.js) : œil dans sa barre (affichage de cette fenêtre) et, pour une vue, barre de verrous en haut au centre */
+.wzEye{width:32px;height:28px;flex:none;display:grid;place-items:center;border-radius:8px;color:var(--acc);cursor:pointer}
+.wzEye svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.wzEye:hover{background:rgba(77,163,255,.16)}
+.wz .hud.on3{display:none!important}      /* les verrous de la barre du haut de la vue agrandie remplacent la barre HUD */
+
+/* icônes de mouvement (Lens shift, Translation, Rotation, Zoom) : violettes quand leurs paramètres sont verrouillés (fenêtre Verrous, Réglages, barre d'une vue agrandie) ; contour violet si une partie seulement */
+.dragSel button.lkd{--c:var(--lock)!important;color:var(--lock);border-color:var(--lock)}
+.dragSel button.lkd.off{color:color-mix(in srgb,var(--lock) 60%,#0f1216)}
+.dragSel button.lkp{border-color:var(--lock)}
+
+/* vue agrandie : accès rapide (Position VP, Calcul config) et œil dans la barre du haut */
+.wzTools{display:flex;align-items:center;gap:4px;flex:none}
+.wzQ{height:24px;padding:0 9px;display:inline-flex;align-items:center;border-radius:999px;border:1px solid rgba(139,152,166,.35);color:var(--mut);font-size:11.5px;font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none}
+.wzQ:hover{color:var(--txt)}
+.wzQ.on{border-color:var(--acc);color:var(--acc);background:rgba(77,163,255,.14)}
+.wzEye.on{background:rgba(77,163,255,.2)}
+
+/* volet Affichage d'une fenêtre agrandie : à droite de la fenêtre, qui se rétrécit pour lui laisser la place (rien n'est assombri en plus, la vue reste utilisable) */
+.pnlLayer.pnlDock{pointer-events:none;display:block}
+.pnlLayer.pnlDock .pnl{pointer-events:auto}
+.pnl.pnlSide{position:fixed;top:10%;right:10%;width:var(--wzSideW);height:80%;border-color:var(--acc)}
+body{--wzSideW:min(320px,30vw)}
+body.wzSide .wz{width:calc(80% - var(--wzSideW) - 10px)!important}
+.pnl.pnlSide .pnlMenu{padding:4px 12px 5px}
+.pnl.pnlSide .pnlBody{padding:4px 10px 14px}
+.pnl.pnlSide .dspSec{padding:10px 4px 12px}
+
+/* barre du haut d'une fenêtre agrandie (winzoom.js : emplacement) : verrous x, y, z, Zoom | Position VP, Calcul config, œil */
+.wzSlot{display:flex;align-items:center;gap:6px;flex:none;min-width:0}
+.wzSlot.wzSlotAbs{position:absolute;top:6px;right:8px;z-index:9;padding:3px 4px 3px 8px;border-radius:999px;background:rgba(23,28,34,.92);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.45)}
+.zlk{display:flex;align-items:center;gap:4px;flex:none}
+.zlk+.wzTools{border-left:1.5px solid var(--line);padding-left:8px;margin-left:2px}      /* séparateur verrous | affichage */
+.zlkIco{width:28px;height:24px;display:grid;place-items:center;border-radius:8px;color:var(--mut);cursor:pointer}
+.zlkIco svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.zlkIco:hover{background:rgba(181,140,255,.14)}
+.zlkIco.on{color:var(--lock)}
+.zlkIco.open{background:rgba(181,140,255,.22)}
+.zlkC{height:24px;min-width:24px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;border:1px solid rgba(139,152,166,.35);color:var(--txt);font-size:11.5px;font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none}
+.zlkC:hover{border-color:var(--lock)}
+.zlkC.on{background:var(--lock);border-color:var(--lock);color:#1a1030}
+
+/* bandeau données sous une vue agrandie : même largeur que la vue, en bas de la zone ; la vue se réduit en hauteur (--wzBandH, mesuré) */
+.dataBand.wzBand{position:fixed!important;left:10%!important;bottom:10%!important;top:auto!important;right:auto!important;width:80%!important;max-height:34%;margin:0!important;transform:none!important;transition:none!important;
+  z-index:56!important;display:flex!important;flex-direction:column;align-self:auto!important;background:var(--panel);border:1px solid var(--acc);border-radius:var(--r);padding:8px 10px;overflow:auto;box-sizing:border-box;animation:wzIn .18s ease-out}
+.dataBand.wzBand .dbTab{display:none}
+.dataBand.wzBand .dbIn{padding:0}
+body.wzBandOn .wz{height:calc(80% - var(--wzBandH, 0px) - 8px)!important}
+body.wzSide .dataBand.wzBand{width:calc(80% - var(--wzSideW) - 10px)!important}
+
+/* appui long (1 s) sur une icône de mouvement : un anneau violet se remplit, puis le verrou bascule */
+@keyframes holdRing{from{box-shadow:0 0 0 0 rgba(181,140,255,0)}to{box-shadow:0 0 0 5px rgba(181,140,255,.85)}}
+.dragSel button.holding{animation:holdRing 1s linear forwards}
+
+/* carrousel des vues agrandies (winzoom.js) : la nouvelle vue arrive par un léger glissement (translate : la taille mesurée par les vues ne change pas) ; pas de fondu du bandeau ni du volet pendant le passage */
+@keyframes wzSlideR{from{translate:34px 0}}
+@keyframes wzSlideL{from{translate:-34px 0}}
+.wz.wzFromR{animation:wzSlideR .26s cubic-bezier(.2,.7,.3,1)}
+.wz.wzFromL{animation:wzSlideL .26s cubic-bezier(.2,.7,.3,1)}
+body.wzSwitch .dataBand.wzBand,body.wzSwitch .pnl{animation:none}
+.mwBare.wz>.mwh{display:flex}      /* la 3D de la vue principale (sans barre) en reçoit une quand le carrousel l'agrandit */
+
+/* ----- favoris dans les simulations (switch vert ON) : tous les favoris de la config chargée sur une ligne qui défile à l'horizontale ; « 1/8 » à droite ----- */
+.simVals .simItem,.simFull .simItem,.simVals .simGrn,.simFull .simGrn{pointer-events:auto}      /* favoris cliquables (soulignés = dessinés dans les vues) et défilables */
+.simVals,.simFull:not(:empty){position:relative;display:flex;flex-wrap:nowrap;align-items:center;gap:10px;max-width:100%;min-width:0}
+.simGrn{flex:1 1 auto;min-width:0;display:flex;flex-wrap:nowrap;justify-content:flex-start;align-items:center;gap:2px 22px;transition:none;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scrollbar-width:none;-webkit-overflow-scrolling:touch;touch-action:pan-x}
+.simGrn::-webkit-scrollbar{display:none}
+.simGrn .simItem{flex:none;white-space:nowrap;scroll-snap-align:start}
+.simGrn .simItem:first-child{margin-left:auto}
+.simGrn .simItem:last-child{margin-right:auto}      /* centrés s'il y a la place ; sinon calés à gauche, sans rien rogner */
+.simScroll > .simGrn{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}      /* d'autres favoris à droite : léger fondu */
+.simCount{flex:none;font-size:11.5px;font-weight:600;color:var(--mut);font-variant-numeric:tabular-nums;white-space:nowrap}
+.simCount:empty{display:none}
+.dataBand .simVals{align-self:stretch;max-width:100%}
+
+/* étoile de la barre du haut (fenêtre Favoris) : allumée tant que la fenêtre est ouverte */
+#starBtn.on{border-color:var(--acc);color:var(--acc)}
+#starBtn svg{stroke-linejoin:round}
+.favBody{padding:10px 14px 14px}
+.favList{display:flex;flex-direction:column;gap:4px}
+.favRow{display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;padding:8px 12px;border-radius:10px;border:1px solid transparent;background:transparent;color:#07a61c;font-size:14px}
+.favRow:hover{background:var(--panel2)}
+.favRow em{font-style:normal;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.favRow b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.favRow.on{border-color:#07a61c;background:rgba(7,166,28,.1)}
+.favRow.on em,.favRow.on b{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
+.favNo{flex:none;min-width:18px;font-size:11.5px;font-weight:700;color:var(--mut);font-variant-numeric:tabular-nums}
+.favHint,.favEmpty{margin:12px 2px 0;font-size:12px;color:var(--mut);line-height:1.45}

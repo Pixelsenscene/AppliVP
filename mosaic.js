@@ -191,6 +191,7 @@ function create(opts) {
   /* ----- déplacer une fenêtre (glisser sa barre de titre) ----- */
   function dragStart(e, id, head) {
     if (e.target.closest('button') || (e.button && e.button !== 0) || !tree) return;
+    if (shell(id).el.classList.contains('wz')) return;                // fenêtre agrandie (winzoom.js) : elle ne se déplace pas
     if (isLeaf(tree) && !wins[id].rowable) return;                    // seule dans la mosaïque : rien à échanger
     const x0 = e.clientX, y0 = e.clientY; let active = false, ghost = null, hit = null;
     const mv = ev => {

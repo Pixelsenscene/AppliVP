@@ -14,8 +14,8 @@
   const in3d = () => !!(window.View3D && window.View3D.active);      // page 3D affichée (vue de face simplifiée, pas de défilement automatique des réglages)
   // verrouillé = true. Par défaut : projecteur et écran figés, position + zoom libres.
   const locks = { vp: true, sw: true, sh: true, x: false, y: false, z: false, zoom: false,
-    pan: false, tilt: false, roll: false, sdx: false, sdy: false, sdz: false, syaw: false, spitch: false, sroll: false };      // les 9 derniers : orientation du VP et position / orientation de l'écran, verrouillés par les poignées de la page 3D
-  const ADV_LOCKABLE = ['pan', 'tilt', 'roll', 'sdx', 'sdy', 'sdz', 'syaw', 'spitch', 'sroll'];
+    sx: false, sy: false, oy: false, pan: false, tilt: false, roll: false, sdx: false, sdy: false, sdz: false, syaw: false, spitch: false, sroll: false };      // optique avancée : lens shift (sx, sy), throw offset (oy), orientation du VP ; position / orientation de l'écran (aussi verrouillables par les poignées de la page 3D et la fenêtre Verrous)
+  const ADV_LOCKABLE = ['sx', 'sy', 'oy', 'pan', 'tilt', 'roll', 'sdx', 'sdy', 'sdz', 'syaw', 'spitch', 'sroll'];
 
   /* ---------- Derniers paramètres modifiés ----------
      Un curseur qui bouge devient jaune intense (classe .hot) ; une fois relâché il reste jaune, moins vif, et son cadenas prend un contour jaune
@@ -161,7 +161,7 @@
         <div class="rt"><label>${p.label}${k === 'zoom' ? ' · ratio <b id="o_ratio"></b>' : ''}</label><input class="val" id="o_${k}" data-k="${k}" type="text" inputmode="${k === 'x' ? 'text' : 'decimal'}" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
         <div class="ctl"><button class="lk" data-k="${k}"></button><button data-s="${k}" data-d="-1">−</button><input type="range" id="${k}" min="${p.min}" max="${p.max}" step="${p.step}"><button data-s="${k}" data-d="1">+</button></div></div>`);
       }
-      if (g.id === 'ecran') card.insertAdjacentHTML('beforeend', `<div class="advItem scrItem"><div class="opt"><label><input type="checkbox" id="adv_scr"><span>Déplacer l’écran</span></label><button class="info" data-h="scr" aria-label="Aide">i</button></div>
+      if (g.id === 'ecran') card.insertAdjacentHTML('beforeend', `<div class="advItem scrItem"><div class="opt"><label><input type="checkbox" id="adv_scr"><span>Déplacer l’écran</span></label><button class="info" data-h="scr" aria-label="Aide">i</button>${grpLk('scr')}</div>
         <div class="grp hidden" id="g_scr">${ADV_ROWS.filter(r => r.grp === 'scr').map(advRowHtml).join('')}</div></div>`);
       if (!OPEN[g.id]) card.classList.add('collapsed');
       /* bloc réduit / déployé ; le chemin de l'événement est lu tel quel car le bouton cadenas redessine son icône pendant le clic (la cible n'est alors plus dans la page) */
@@ -215,7 +215,7 @@
     /* toucher un réglage verrouillé (curseur, valeur, libellé, listes) : message sous les icônes de la vue de face */
     box.addEventListener('pointerdown', e => {
       const row = e.target.closest('.row.locked'), sel = e.target.closest('.vpsel.locked');
-      if (row && !e.target.closest('.lk')) lockMsg(row.dataset.k); else if (sel) lockMsg(...(sel.id === 'vpsel' ? ['vp'] : ['sw', 'sh']));
+      if (row && !e.target.closest('.lk')) lockMsg(row.dataset.k || row.dataset.a); else if (sel) lockMsg(...(sel.id === 'vpsel' ? ['vp'] : ['sw', 'sh']));
     });
   }
   function toggleGroup(id) {
@@ -256,11 +256,101 @@
         const b = row.querySelector('.lk'); b.dataset.l = locks[k] ? 1 : 0; b.innerHTML = locks[k] ? ICON_L : ICON_U;
       }
     }
-    for (const id of ADV_LOCKABLE) { const row = document.querySelector(`.row[data-a=${id}]`); if (row) row.classList.toggle('locked', !!locks[id]); }      // curseurs avancés verrouillés (violet, bloqués)
+    for (const id of ADV_LOCKABLE) {
+      const row = document.querySelector(`.row[data-a=${id}]`); if (!row) continue;
+      row.classList.toggle('locked', !!locks[id]);
+      const b = row.querySelector('.lk[data-ak]'); if (b) { b.dataset.l = locks[id] ? 1 : 0; b.innerHTML = locks[id] ? ICON_L : ICON_U; }      // cadenas du curseur avancé
+    }
+    document.querySelectorAll('.lk[data-ag]').forEach(b => {                                          // cadenas de groupe (lens shift, rotation, déplacer l'écran) : plein = tout verrouillé, contour = en partie
+      const ks = ADV_GRP_KEYS[b.dataset.ag], n = ks.filter(k => locks[k]).length;
+      b.dataset.l = n === ks.length ? 1 : 0; b.classList.toggle('mixed', n > 0 && n < ks.length); b.innerHTML = n ? ICON_L : ICON_U;
+    });      // curseurs avancés verrouillés (violet, bloqués)
     document.querySelectorAll('.pmItem').forEach(b => b.classList.toggle('on', !!locks[b.dataset.k]));      // cases des volets déroulants des pastilles
     $('vpsel').classList.toggle('locked', locks.vp);
     $('scrsel').classList.toggle('locked', locks.sw || locks.sh);
+    lockUi();
   }
+
+  /* ---------- Fenêtre VERROUS (cadenas de la barre du haut) : tous les paramètres verrouillables, condensés ----------
+     Même état que les cadenas des Réglages (qui restent) : un appui verrouille / libère ; le cadenas d'un groupe verrouille ou libère tout le groupe.
+     Verrouiller pan, tilt ou roll fige l'orientation actuelle (orientation manuelle), comme les poignées de la page 3D. */
+  const LOCK_SECTIONS = [
+    { id: 'lk-vp', title: 'Projecteur', short: 'VP', keys: ['vp'] },
+    { id: 'lk-ecran', title: 'Écran', short: 'Écran', keys: ['sw', 'sh'] },
+    { id: 'lk-pos', title: 'Position du VP', short: 'Position', keys: ['y', 'x', 'z'] },
+    { id: 'lk-zoom', title: 'Optique', short: 'Zoom', keys: ['zoom'] },
+    { id: 'lk-lens', title: 'Optique avancée · Lens shift', short: 'Lens shift', keys: ['sx', 'sy'], opt: 'lens' },
+    { id: 'lk-rot', title: 'Optique avancée · Rotation du VP', short: 'Rotation', keys: ['pan', 'tilt', 'roll'], opt: 'rot' },
+    { id: 'lk-off', title: 'Optique avancée · Throw offset', short: 'Throw offset', keys: ['oy'], opt: 'off' },
+    { id: 'lk-scr', title: 'Écran déplacé', short: 'Écran déplacé', keys: ['sdx', 'sdy', 'sdz', 'syaw', 'spitch', 'sroll'], opt: 'scr' },
+  ];
+  const LK_SHORT = { sx: 'Horizontal', sy: 'Vertical', oy: 'Décalage vertical', pan: 'Pan', tilt: 'Tilt', roll: 'Roll', sdx: 'Décalage x', sdy: 'Décalage y', sdz: 'Décalage z', syaw: 'Lacet', spitch: 'Tangage', sroll: 'Roulis' };
+  const lkLabel = k => LOCK_LABELS[k] || LK_SHORT[k] || k;
+  const lkValue = k => {
+    if (k === 'vp') return esc(String(S.vp));
+    if (PARAMS[k]) return fm(S[k], k === 'zoom' ? 0 : 2) + ' ' + PARAMS[k].unit;
+    const r = ADV_ROWS.find(q => q.id === k); return r ? fm(r.get(), r.dp) + ' ' + r.unit : '';
+  };
+  function setLockKeys(keys, on) {                                    // verrouille / libère plusieurs paramètres d'un coup
+    if (on && keys.some(k => k === 'pan' || k === 'tilt' || k === 'roll')) ensureRotManual();
+    keys.forEach(k => { locks[k] = !!on; }); render();
+  }
+  const toggleKeys = keys => setLockKeys(keys, !keys.every(k => locks[k]));      // tout verrouillé : on libère ; sinon on verrouille tout
+  let lockPanel = null;
+  function buildLockPanel(body) {
+    body.classList.add('lkBody');
+    body.innerHTML = LOCK_SECTIONS.map(sec => {
+      const any = sec.keys.some(k => locks[k]), all = sec.keys.every(k => locks[k]);
+      const off = sec.opt && !(sec.opt === 'scr' ? !!S.scr : adv[sec.opt]);
+      return `<section class="lkSec${off ? ' off' : ''}" id="${sec.id}"><h3><button type="button" class="lkGrp${any ? ' on' : ''}" data-lg="${sec.id}" aria-pressed="${all}" title="${all ? 'Tout libérer' : 'Tout verrouiller'}">${any ? ICON_L : ICON_U}</button>${sec.title}${off ? '<span class="lkOff" title="Option non cochée dans Réglages : le verrou s’appliquera quand elle le sera">inactive</span>' : ''}</h3>`
+        + `<div class="lkChips">${sec.keys.map(k => `<button type="button" class="lkC${locks[k] ? ' on' : ''}" data-lk="${k}" aria-pressed="${!!locks[k]}" title="${locks[k] ? 'Verrouillé : toucher pour libérer' : 'Libre : toucher pour verrouiller'}">${locks[k] ? ICON_L : ICON_U}<span>${lkLabel(k)}</span><b>${lkValue(k)}</b></button>`).join('')}</div></section>`;
+    }).join('');
+  }
+  function openLockPanel() {
+    if (lockPanel) { lockPanel.close(); return; }
+    lockPanel = Panels.open({ title: 'Verrous', cls: 'pnlLk', build: buildLockPanel, onClose: () => { lockPanel = null; } });      // compacte : tout tient dans la fenêtre, sans menu ni défilement
+    lockPanel.body.addEventListener('click', e => {
+      const c = e.target.closest('[data-lk]'), g = e.target.closest('[data-lg]');
+      if (c) setLockKeys([c.dataset.lk], !locks[c.dataset.lk]);
+      else if (g) toggleKeys(LOCK_SECTIONS.find(s => s.id === g.dataset.lg).keys);
+    });
+  }
+
+  /* ---------- Vue agrandie (double-clic sur sa barre, winzoom.js) : dans sa barre du haut, un cadenas puis x, y, z et Zoom ----------
+     Un paramètre verrouillé est violet ; le cadenas devient violet dès qu'un seul l'est. Le cadenas ouvre le volet Verrous à droite de la fenêtre (comme l'œil pour l'affichage).
+     Lens shift, rotation et translation se verrouillent par un appui d'1 s (sans glisser) sur leur icône de mouvement. */
+  const ZL = [['x', 'x', ['x']], ['y', 'y', ['y']], ['z', 'z', ['z']], ['zoom', 'Zoom', ['zoom']]];
+  let zlEl = null, lockSide = null, keepLockSide = false;      // keepLockSide : carrousel des vues agrandies (winzoom.js) — le volet Verrous ouvert suit la vue suivante
+  function zoomLockBar(el) {
+    const sw = WinZoom.switching;
+    if (!el) keepLockSide = sw && !!lockSide; else if (!sw) keepLockSide = false;
+    if (lockSide) { const p = lockSide; lockSide = null; p.close(); }
+    if (zlEl) { zlEl.remove(); zlEl = null; }
+    if (!el) return;
+    const mw = el.classList.contains('mw'), isView = mw ? ['v3d', 'face', 'side', 'top'].includes(el.dataset.w) : el.matches('.viz .card');
+    if (!isView) return;
+    const slot = WinZoom.slot(); if (!slot) return;
+    zlEl = document.createElement('span'); zlEl.className = 'zlk'; slot.prepend(zlEl);
+    drawZoomLocks();
+    if (keepLockSide) { keepLockSide = false; toggleLockSide(); }
+  }
+  function drawZoomLocks() {                                          // des <span role="button"> : la mosaïque recrée les <button> de la barre à chaque rangement
+    if (!zlEl) return;
+    const any = ZL.some(z => z[2].some(k => locks[k]));
+    zlEl.innerHTML = `<span class="zlkIco${any ? ' on' : ''}${lockSide ? ' open' : ''}" role="button" tabindex="0" data-zlp="1" title="Verrous : ouvrir le volet à droite${any ? ' (au moins un paramètre est verrouillé)' : ''}" aria-label="Verrous">${any ? ICON_L : ICON_U}</span>`
+      + ZL.map(([id, lab, ks]) => { const on = ks.every(k => locks[k]); return `<span class="zlkC${on ? ' on' : ''}" role="button" tabindex="0" data-zl="${id}" aria-pressed="${on}" title="${on ? 'Verrouillé : toucher pour libérer' : 'Toucher pour verrouiller'}">${lab}</span>`; }).join('');
+  }
+  function toggleLockSide() {                                         // volet Verrous à droite de la fenêtre agrandie (la fenêtre se rétrécit pour lui laisser la place)
+    if (lockSide) { lockSide.close(); return; }
+    lockSide = Panels.open({ title: 'Verrous', cls: 'pnlSide', dock: true, build: buildLockPanel, onClose: () => { lockSide = null; drawZoomLocks(); } });
+    lockSide.body.addEventListener('click', e => {
+      const c = e.target.closest('[data-lk]'), g = e.target.closest('[data-lg]');
+      if (c) setLockKeys([c.dataset.lk], !locks[c.dataset.lk]);
+      else if (g) toggleKeys(LOCK_SECTIONS.find(q => q.id === g.dataset.lg).keys);
+    });
+    drawZoomLocks();
+  }
+  function lockUi() { if (lockPanel) lockPanel.refresh(); if (lockSide) lockSide.refresh(); drawZoomLocks(); }
 
   /* ---------- Optique avancée : A lens shift · B translation · C rotation · throw offset ---------- */
   const adv = { ref: 'auto', zoom: false, lens: false, trans: false, rot: false, src: 'std', off: false, offV: 0, offEdited: false, drag: null, _vp: null };
@@ -292,9 +382,11 @@
   const advSlider = r => r.lens ? lensRange(r.lens).map(x => x * 100) : [r.min, r.max];
   const ADV_COL = { lens: '#0fbcd6', off: '#0fbcd6', rot: '#d6620f', scr: '#ff6b6b' };      // couleurs des icônes (lens shift, rotation) ; le throw offset prolonge le lens shift
   const advRowHtml = r => `<div class="row${r.grp === 'scr' ? ' scrRow' : ''}" data-a="${r.id}" style="--tc:${ADV_COL[r.grp]}"><div class="rt"><label>${r.label}</label><input class="val" id="a_o_${r.id}" type="text" inputmode="decimal" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
-  <div class="ctl"><button data-a="${r.id}" data-d="-1">−</button><input type="range" id="a_${r.id}" step="${r.step}"><button data-a="${r.id}" data-d="1">+</button></div>${r.presets ? `<div class="pre">${r.presets.map(p => `<button type="button" data-a="${r.id}" data-p="${p}">${p > 0 ? '+' : '−'}${Math.abs(p)}°</button>`).join('')}</div>` : ''}<div class="rw" id="a_w_${r.id}"></div></div>`;
+  <div class="ctl"><button class="lk" data-ak="${r.id}" title="Verrouiller / libérer"></button><button data-a="${r.id}" data-d="-1">−</button><input type="range" id="a_${r.id}" step="${r.step}"><button data-a="${r.id}" data-d="1">+</button></div>${r.presets ? `<div class="pre">${r.presets.map(p => `<button type="button" data-a="${r.id}" data-p="${p}">${p > 0 ? '+' : '−'}${Math.abs(p)}°</button>`).join('')}</div>` : ''}<div class="rw" id="a_w_${r.id}"></div></div>`;
   const AIM_ICON = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>';
-  const optHtml = (id, tag, name, help) => `<div class="opt"><label><input type="checkbox" id="adv_${id}"><span>${name}</span></label>${id === 'rot' ? `<button class="aimMini" data-t="Viser le centre de l’écran" aria-label="Viser le centre de l’écran">${AIM_ICON}</button>` : ''}<button class="info" data-h="${help}" aria-label="Aide">i</button></div>`;
+  const ADV_GRP_KEYS = { lens: ['sx', 'sy'], rot: ['pan', 'tilt', 'roll'], scr: ['sdx', 'sdy', 'sdz', 'syaw', 'spitch', 'sroll'] };      // cadenas de groupe des options à plusieurs curseurs
+  const grpLk = id => ADV_GRP_KEYS[id] ? `<button class="lk" data-ag="${id}" title="Verrouiller / libérer le groupe"></button>` : '';
+  const optHtml = (id, tag, name, help) => `<div class="opt"><label><input type="checkbox" id="adv_${id}"><span>${name}</span></label>${id === 'rot' ? `<button class="aimMini" data-t="Viser le centre de l’écran" aria-label="Viser le centre de l’écran">${AIM_ICON}</button>` : ''}<button class="info" data-h="${help}" aria-label="Aide">i</button>${grpLk(id)}</div>`;
 
   function buildAdv(box) {
     const rows = g => ADV_ROWS.filter(r => r.grp === g).map(advRowHtml).join('');
@@ -343,7 +435,7 @@
     });
     box.querySelectorAll('.row[data-a] input[type=range]').forEach(i => i.oninput = () => apply(byId(i.id.slice(2)), +i.value));
     card.querySelectorAll('.pre button').forEach(b => b.onclick = () => apply(byId(b.dataset.a), +b.dataset.p));
-    box.querySelectorAll('.row[data-a] .ctl button').forEach(b => b.onclick = () => { const r = byId(b.dataset.a); apply(r, r.get() + (+b.dataset.d) * r.step); });
+    box.querySelectorAll('.row[data-a] .ctl button[data-a]').forEach(b => b.onclick = () => { const r = byId(b.dataset.a); apply(r, r.get() + (+b.dataset.d) * r.step); });
     box.querySelectorAll('.row[data-a] .val').forEach(inp => {
       const r = byId(inp.id.slice(4));
       inp.onfocus = () => { inp.value = fm(r.get(), r.dp); setTimeout(() => inp.select(), 0); };
@@ -420,6 +512,7 @@
   }
 
   /* ---------- Glisser le faisceau dans la vue de face ---------- */
+  const DRAG_LOCKS = { zoom: ['zoom'], lens: ['sx', 'sy'], rot: ['pan', 'tilt', 'roll'], trans: ['x', 'y', 'z'] };      // paramètres que chaque icône de mouvement fait bouger (couleur violette quand ils sont verrouillés)
   const DRAG_OPTS = [   // [id, nom, icône, couleur]
     ['lens', 'Lens Shift', '<path opacity=".5" d="M8.5 9.5H7.3a1.8 1.8 0 0 0-1.8 1.8v3.9A1.8 1.8 0 0 0 7.3 17h6.4a1.8 1.8 0 0 0 1.8-1.8v-.9"/><rect x="8.5" y="6.8" width="10" height="7.5" rx="1.8"/><path d="M12 4.4V1.8M10.4 3.4 12 1.8l1.6 1.6M12 19.6v2.6M10.4 20.8 12 22.4l1.6-1.6M4.4 12H1.8M3.2 10.4 1.6 12l1.6 1.6M19.6 12h2.6M20.8 10.4 22.4 12l-1.6 1.6"/>', '#0fbcd6'],
     ['trans', 'Translation', '<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>', '#0fd683'],
@@ -429,7 +522,7 @@
   let dmT = 0, rollMode = false;                               // rollMode : le glisser (point orange au-dessus de la flèche du haut, ou poignée du faisceau) ne pilote que le roll
   /* « Recul (y) est verrouillé » : indique quel(s) paramètre(s) verrouillé(s) on a tenté de modifier */
   const LOCK_NAMES = { vp: ['Projecteur', 0], sw: ['Largeur de l’écran', 1], sh: ['Hauteur de l’écran', 1], y: ['Recul (y)', 0], x: ['Centrage (x)', 0], z: ['Hauteur (z)', 1], zoom: ['Zoom', 0],
-    pan: ['Pan', 0], tilt: ['Tilt', 0], roll: ['Roll', 0], sdx: ['Décalage x de l’écran', 0], sdy: ['Décalage y de l’écran', 0], sdz: ['Décalage z de l’écran', 0], syaw: ['Lacet de l’écran', 0], spitch: ['Tangage de l’écran', 0], sroll: ['Roulis de l’écran', 0] };      // [nom, féminin ?]
+    sx: ['Lens shift horizontal', 0], sy: ['Lens shift vertical', 0], oy: ['Throw offset', 0], pan: ['Pan', 0], tilt: ['Tilt', 0], roll: ['Roll', 0], sdx: ['Décalage x de l’écran', 0], sdy: ['Décalage y de l’écran', 0], sdz: ['Décalage z de l’écran', 0], syaw: ['Lacet de l’écran', 0], spitch: ['Tangage de l’écran', 0], sroll: ['Roulis de l’écran', 0] };      // [nom, féminin ?]
   function lockMsg(...keys) {
     const ks = [...new Set(keys)].filter(k => locks[k] && LOCK_NAMES[k]);
     if (!ks.length) return;
@@ -459,6 +552,7 @@
       b.className = (k === cur ? 'on' : adv[k] && (k !== 'zoom' || vpOf().zoomable) ? 'chk' : 'off')
         ;
       if (k === 'rot' && rollMode) b.classList.add('roll');
+      const lk = DRAG_LOCKS[k]; if (lk) { const n = lk.filter(q => locks[q]).length; b.classList.toggle('lkd', n === lk.length); b.classList.toggle('lkp', n > 0 && n < lk.length); }      // verrouillé : violet (contour violet si une partie seulement)
       if (k === 'zoom') {                                   // flèches jaunes (0, 1 ou 2 par sens) selon la course restante
         const lvl = r => locks.zoom || r <= 0 ? 0 : r < 0.5 ? 1 : 2;
         b.dataset.zu = lvl((100 - S.zoom) / 100); b.dataset.zd = lvl(S.zoom / 100);      // flèches du haut : course restante vers un zoom % plus élevé ; du bas : vers un zoom % plus faible
@@ -471,6 +565,19 @@
     $('refSel').title = { auto: 'affichage centré sur l’écran + faisceau', vp: 'affichage centré sur le faisceau', ecran: 'affichage centré sur l’écran' }[adv.ref];      // note au survol
   }
   /* Mouvement du faisceau : on appuie sur une icône (ou sur le cercle clignotant) et on glisse. Appui sur une icône = l'active et coche l'option ; double clic = la désélectionne et décoche l'option. */
+  /* Appui d'1 s sans glisser sur l'icône Lens shift, Rotation ou Translation : verrouille (ou libère) ses paramètres ; l'icône passe en violet (drawDragBox). */
+  const HOLD_KEYS = { lens: ['sx', 'sy'], rot: ['pan', 'tilt', 'roll'], trans: ['x', 'y', 'z'] };
+  let hold = null;
+  function holdStart(b, k, e) {
+    holdStop(); if (!HOLD_KEYS[k]) return;
+    b.classList.add('holding');
+    hold = { b, x: e.clientX, y: e.clientY, t: setTimeout(() => {
+      const ks = HOLD_KEYS[k], lock = !ks.every(q => locks[q]), name = (DRAG_OPTS.find(o => o[0] === k) || [])[1] || k;
+      holdStop(); setLockKeys(ks, lock);
+      dragMsg(`${name} ${lock ? (k === 'trans' || k === 'rot' ? 'verrouillée' : 'verrouillé') : (k === 'trans' || k === 'rot' ? 'libérée' : 'libéré')}`, lock);
+    }, 1000) };
+  }
+  function holdStop() { if (!hold) return; clearTimeout(hold.t); hold.b.classList.remove('holding'); hold = null; }
   function attachFaceDrag() {
     const boxes = dragBoxes(), fsvg = $('svgFace'); let st0 = null, p0 = null, F = null, moved = false, dotTap = null;      // dotTap : appui sur le point roll (simple appui = bascule, glisser = roll)
     const begin = (e, k, freezeFace, box) => {
@@ -506,7 +613,10 @@
       }
       if (st0.m === 'lens') {
         const lh = adv.src === 'free' ? [-5, 5] : lensRange('h'), lv = adv.src === 'free' ? [-5, 5] : lensRange('v');
-        S.sx = Math.round(cl(st0.sx + ds / st0.Wb, lh) * 200) / 200; S.sy = Math.round(cl(st0.sy + dt / st0.Hb, lv) * 200) / 200;
+        const nx = Math.round(cl(st0.sx + ds / st0.Wb, lh) * 200) / 200, ny = Math.round(cl(st0.sy + dt / st0.Hb, lv) * 200) / 200, lk = [];      // un axe verrouillé (fenêtre Verrous, barre d'une vue agrandie) ne bouge pas
+        if (!locks.sx) S.sx = nx; else if (Math.abs(nx - st0.sx) > 0.01) lk.push('sx');
+        if (!locks.sy) S.sy = ny; else if (Math.abs(ny - st0.sy) > 0.01) lk.push('sy');
+        if (lk.length) lockMsg(...lk);
       } else if (st0.m === 'zoom') {                                       // glisser vers le haut = zoom % plus élevé (faisceau plus petit) ; vers le bas = zoom % plus faible (faisceau plus grand)
         if (locks.zoom) { if (Math.abs(py) > 4) lockMsg('zoom'); } else S.zoom = clampP('zoom', Math.round(st0.zoom - py * 0.5));
       } else if (st0.m === 'trans' && fr) {                                // écran déplacé : le VP glisse parallèlement à l'écran (le faisceau suit exactement le doigt), donc x, y et z peuvent changer
@@ -519,13 +629,15 @@
         if (!locks.z) S.z = clampP('z', magnet0(Math.round((st0.z + dz) * 100) / 100, magnetPx(F && F.k))); else if (Math.abs(dz) > 0.02) lk.push('z');
         if (lk.length) lockMsg(...lk);
       } else if (st0.m === 'rot' && S.rot && rollMode) {                   // glisser vers la droite = image qui tourne dans le sens horaire (roll < 0)
-        S.rot.roll = Math.round(cl(st0.roll - px * 0.3, [-180, 180]) * 2) / 2;
-      } else if (st0.m === 'rot' && S.rot && fr) {                         // écran déplacé : on vise le point de l'écran sous le doigt
-        const a = G.autoAim({ ...S, aim: [st0.T[0] + ds, st0.T[1] + dt] });
-        S.rot.pan = Math.round(cl(a.pan, [-89, 89]) * 10) / 10; S.rot.tilt = Math.round(cl(a.tilt, [-89, 89]) * 10) / 10;
+        if (locks.roll) { if (Math.abs(px) > 4) lockMsg('roll'); } else S.rot.roll = Math.round(cl(st0.roll - px * 0.3, [-180, 180]) * 2) / 2;
       } else if (st0.m === 'rot' && S.rot) {
-        S.rot.pan = Math.round(cl(st0.rot.pan + deg(Math.atan2(dx, st0.dist)), [-89, 89]) * 10) / 10;
-        S.rot.tilt = Math.round(cl(st0.rot.tilt + deg(Math.atan2(dz, st0.dist)), [-89, 89]) * 10) / 10;
+        let np, nt;
+        if (fr) { const a = G.autoAim({ ...S, aim: [st0.T[0] + ds, st0.T[1] + dt] }); np = Math.round(cl(a.pan, [-89, 89]) * 10) / 10; nt = Math.round(cl(a.tilt, [-89, 89]) * 10) / 10; }      // écran déplacé : on vise le point de l'écran sous le doigt
+        else { np = Math.round(cl(st0.rot.pan + deg(Math.atan2(dx, st0.dist)), [-89, 89]) * 10) / 10; nt = Math.round(cl(st0.rot.tilt + deg(Math.atan2(dz, st0.dist)), [-89, 89]) * 10) / 10; }
+        const lk = [];
+        if (!locks.pan) S.rot.pan = np; else if (Math.abs(np - st0.rot.pan) > 0.5) lk.push('pan');
+        if (!locks.tilt) S.rot.tilt = nt; else if (Math.abs(nt - st0.rot.tilt) > 0.5) lk.push('tilt');
+        if (lk.length) lockMsg(...lk);
       }
       render();
     };
@@ -556,7 +668,10 @@
         if (k === 'zoom' && !vpOf().zoomable) { dragMsg('Focale fixe : zoom indisponible pour ce VP'); return; }
         setOpt(k, true); adv.drag = k; render();
         begin(e, k, false, box);
+        holdStart(b, k, e);
       });
+      box.addEventListener('pointermove', e => { if (hold && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > 6) holdStop(); });      // on glisse : ce n'est plus un appui long
+      ['pointerup', 'pointercancel'].forEach(t => box.addEventListener(t, holdStop));
     }
     fsvg.addEventListener('pointerdown', e => {
       const k = dragMode();
@@ -1047,25 +1162,7 @@
     const end = () => { if (!off) return; off = null; delete frozen[id]; render(); };
     svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
   }
-  /* plein écran des vues face / côté / dessus */
-  let backToCompact = false;                                             // plein écran demandé depuis la vue compacte : en sortir ramène à la vue compacte
-  function toggleFull(card, on) {
-    const want = on ?? !card.classList.contains('full');
-    document.querySelectorAll('.viz .card.full').forEach(c => { c.classList.remove('full'); c.querySelector('.expand').textContent = '⤢'; });
-    const viz = $('viz'); viz.classList.remove('fs-side', 'fs-top', 'fs-face', 'fs');
-    if (want) { viz.classList.add('fs'); card.classList.add('full'); card.querySelector('.expand').textContent = '✕'; viz.classList.add(card.classList.contains('side') ? 'fs-side' : card.classList.contains('face') ? 'fs-face' : 'fs-top'); }
-    dockAuto();
-    if (!want && backToCompact) { backToCompact = false; if (!$('p-calc').classList.contains('cfg')) $('cfgBtn').click(); }
-    requestAnimationFrame(render);
-  }
-  /* le bouton Auto (avec son curseur, son message et sa note) passe dans la grande vue en bas à gauche quand une vue est agrandie, puisque la barre du haut est alors recouverte ; il retourne à sa place ensuite */
-  const dockHome = { parent: $('autoDock').parentNode, next: $('autoDock').nextSibling };
-  function dockAuto() {
-    const dock = $('autoDock'), big = document.querySelector('.viz .card.full');
-    if (big) { big.append(dock); dock.classList.add('inCard'); }
-    else if (dock.parentNode !== dockHome.parent) { dockHome.parent.insertBefore(dock, dockHome.next); dock.classList.remove('inCard'); }
-    hideAutoCount(); hideAutoMsg();
-  }
+  /* (les vues s'agrandissent désormais par double-clic sur leur barre du haut : winzoom.js) */
   function drawHud() {
     document.querySelectorAll('.card.full .hud').forEach(h => {      // deux groupes : x, y, z · état (couverture, pixels perdus) ; en vue de face plein écran ils sont placés séparément
       h.innerHTML = `<div class="hg">${['y', 'x', 'z'].map(k => `<button class="chip ${locks[k] ? 'lockd' : ''}" data-k="${k}">${locks[k] ? ICON_L : ICON_U}${PARAMS[k].label} <b>${fm(S[k])} m</b></button>`).join('')}</div><div class="hg st">${lastR ? statusHtml(lastR) : ''}</div>`;
@@ -1249,18 +1346,17 @@
     const v = n / u[0], d = Math.abs(v) >= 99.5 ? 0 : Math.abs(v) >= 9.95 ? 1 : 2;
     return fm(v, d).replace(/,(\d*?)0+$/, ',$1').replace(/,$/, '') + u[1];
   };
-  /* ---------- Valeurs cochées dans les lignes de calcul : affichées dans les simulations ----------
-     Le mode se règle en haut de ∑ Calculs (bouton rond vert). Cases à cocher sans limite ; les 3 premières (par ordre de cochage) en vert #07a61c, les suivantes en #ebce15.
-     Chaque valeur cochée peut recevoir un nom (affiché à la place du texte bleu). Des configurations (A, B, C…) mémorisent une sélection + ses noms. */
+  /* ---------- Configurations et leurs favoris : valeurs des lignes de calcul affichées dans les simulations ----------
+     Une configuration (A, B, C…) est une liste de FAVORIS : des lignes de calcul choisies (cochées en mode édition de ∑ Calculs), chacune avec un nom facultatif.
+     Charger une configuration charge ses favoris (sim.checks). Switch vert ON : ils s'affichent en vert sur une ligne qui défile (« 1/8 ») ; l'étoile de la barre du haut les liste tous. */
   const sim = { checks: [], names: {}, snap: {}, editing: null, draft: '', focusNm: false, FIRST: 3 };
   /* Remplacement d'une valeur depuis le panneau des configurations (bouton « Modifier ») : { old: ligne à remplacer (rouge), nw: nouvelle ligne cochée (jaune), done: modification appliquée (verte) } */
   let simRepl = null, simEdit = false;      // simEdit : Calculs détaillés en « mode édition » (fond vert foncé, cases à cocher, lignes jaunes / rouges) ; sinon affichage simple, sans cases, lignes cochées teintées de vert
   const simDel = new Set();      // lignes décochées mais pas encore confirmées : rouges, avec « valider » (la case se décoche vraiment) et « annuler » (retour direct à la case cochée)
   const simVal = new Map();      // clé de ligne → instant de sa validation : fondu vert de 1,5 s (l'animation reprend où elle en était si la liste est redessinée)
-  const simFavCfg = { id: 'fav', name: 'Favoris', items: [] };
-  const cfgOf0 = id => simCfg.cfgs.find(c => c.id === id) || { items: [] };      // (avant la définition de cfgOf)      // « Favoris » : configuration virtuelle (en bas du menu des configs) qui regroupe tous les paramètres marqués d'une étoile
+  const cfgOf0 = id => simCfg.cfgs.find(c => c.id === id) || { items: [] };      // (avant la définition de cfgOf)
   const simCfg = { on: false, current: '', cfgs: [{ id: 'A', name: 'Config A', items: [] }, { id: 'B', name: 'Config B', items: [] }, { id: 'C', name: 'Config C', items: [] }] };
-  const simColor = ['#07a61c', '#ebce15'];      // valeurs affichées dans les simulations : 3 premières / suivantes
+  const simColor = ['#07a61c', '#ebce15'];      // couleurs des favoris dans Calculs détaillés (mode édition) : 3 premiers / suivants ; dans les simulations, tous en vert
   const SIM_KEY = 'vp.sim.v1';
   /* RÉGLAGE PAR DÉFAUT de la Config A : celle de tout nouvel utilisateur (premier lancement, rien en mémoire) ; Réglages > « Rétablir la Config A par défaut » y revient.
      Pour changer ce défaut : régler la Config A voulue, puis copier ses lignes (clé, nom, copie) ici. */
@@ -1269,42 +1365,29 @@
     {"sk": "vpe|Longueurs|A–B|base,vp", "label": "A–B", "name": "ligne VP à centre base", "snap": {"val": "9,12 m", "x": false, "pts": ["base", "vp"], "cust": [], "name": "A–B", "f": "√(Δx² + Δy² + Δz²)", "cat": "Longueurs"}},
     {"sk": "vpe|Longueurs|A–B|fD,fC", "label": "A–B", "name": "base faisceau (D-C)", "snap": {"val": "3,77 m", "x": false, "pts": ["fD", "fC"], "cust": [], "name": "A–B", "f": "√(Δx² + Δy² + Δz²)", "cat": "Longueurs"}}
   ];
-  /* FAVORI N°1 (favori par défaut, bouton à cercles) : jamais vide ; par défaut « VP à base écran (centre) » (ligne VP → centre de la base de l'écran). Modifiable (Préférences, aperçu des Favoris) et rétablissable. */
-  const DEFAULT_FAV1 = { sk: 'vpe|Longueurs|A–B|base,vp', name: 'VP à base écran (centre)' };
-  const defaultProbe = () => ({ sk: DEFAULT_FAV1.sk, custom: DEFAULT_FAV1.name, snap: { ...JSON.parse(JSON.stringify(DEFAULT_CFG_A[1].snap)), name: DEFAULT_FAV1.name } });
-  let simProbe = defaultProbe();
   const DEFAULT_CFG_B = [], DEFAULT_CFG_C = [];      // à suivre : les réglages par défaut des Config B et C ne sont pas encore définis (vides)
   const defaultCfg = id => JSON.parse(JSON.stringify({ A: DEFAULT_CFG_A, B: DEFAULT_CFG_B, C: DEFAULT_CFG_C }[id] || []));      // chaque config par défaut reste toujours rechargeable (Réglages > Défaut)
   let simIdx = new Map();                                                // dernières lignes connues : clé → { name (texte bleu), val }
   const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   let simFirstRun = true;
-  try { const j = JSON.parse(localStorage.getItem(SIM_KEY) || 'null'); if (j) { simFirstRun = false; if (Array.isArray(j.fav)) simFavCfg.items = j.fav; if (j.probe && j.probe.sk && j.probe.snap) simProbe = j.probe; simCfg.on = !!j.on; simCfg.current = j.current || ''; if (Array.isArray(j.cfgs) && j.cfgs.length) simCfg.cfgs = j.cfgs; sim.checks = j.checks || []; sim.names = j.names || {}; sim.snap = j.snap || {}; } } catch (_) { /* pas de mémoire */ }
+  try { const j = JSON.parse(localStorage.getItem(SIM_KEY) || 'null'); if (j) { simFirstRun = false; simCfg.on = !!j.on; simCfg.current = j.current || ''; if (Array.isArray(j.cfgs) && j.cfgs.length) simCfg.cfgs = j.cfgs; sim.checks = j.checks || []; sim.names = j.names || {}; sim.snap = j.snap || {}; } } catch (_) { /* pas de mémoire */ }
   ['A', 'B', 'C'].forEach((id, i) => { if (!simCfg.cfgs.some(c => c.id === id)) simCfg.cfgs.splice(i, 0, { id, name: 'Config ' + id, items: [] }); });
   simCfg.cfgs.forEach(c => { if (['A', 'B', 'C'].includes(c.id)) c.name = 'Config ' + c.id; });      // le nom des configurations par défaut n'est pas modifiable
   if (simFirstRun) {      // premier lancement : la Config A par défaut est chargée (les valeurs s'affichent dès que le bouton vert est activé)
     const a = simCfg.cfgs.find(c => c.id === 'A'); ['A', 'B', 'C'].forEach(id => { simCfg.cfgs.find(c => c.id === id).items = defaultCfg(id); }); simCfg.current = 'A';
     a.items.forEach(i => { sim.checks.push(i.sk); if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = { ...i.snap }; });
   }      // Config A, B, C existent toujours : une mémoire où l'une manque (supprimée avant) la retrouve, vide
-  let simFavSaved = JSON.stringify(simFavCfg.items);      // favoris enregistrés : les étoiles modifient simFavCfg.items, la disquette les enregistre
-  const simFavDirty = () => JSON.stringify(simFavCfg.items) !== simFavSaved;
   /* DÉMARRAGE : à chaque ouverture (nouvel utilisateur ou non), la Config A est chargée, switch vert sur OFF */
   simCfg.current = 'A'; simCfg.on = false; sim.checks = []; sim.names = {}; sim.snap = {};
   (cfgOf0('A').items || []).forEach(i => { sim.checks.push(i.sk); if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = { ...i.snap }; });
-  const simSave = () => { try { localStorage.setItem(SIM_KEY, JSON.stringify({ on: simCfg.on, current: simCfg.current, cfgs: simCfg.cfgs, fav: JSON.parse(simFavSaved), probe: simProbe, checks: sim.checks, names: sim.names, snap: sim.snap })); } catch (_) { /* stockage indisponible */ } };
+  const simSave = () => { try { localStorage.setItem(SIM_KEY, JSON.stringify({ on: simCfg.on, current: simCfg.current, cfgs: simCfg.cfgs, checks: sim.checks, names: sim.names, snap: sim.snap })); } catch (_) { /* stockage indisponible */ } };
   const IC = { ok: '<path d="M5 12.5l4.5 4.5L19 7.5"/>', del: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/>', edit: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/>', add: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', eye: '<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>', sync: '<path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v5h-5"/>', disk: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>', grip: '<circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/>' };
   const ic = n => `<svg viewBox="0 0 24 24">${IC[n]}</svg>`;
   const simLabel = k => (simIdx.get(k) || {}).name || String(k).split('|')[1] || k;
-  const simItem = (k, i) => { const o = simIdx.get(k); return `<span class="simItem${simHl === k ? ' simSel' : ''}" data-k="${esc(k)}" style="color:${simColor[i < sim.FIRST ? 0 : 1]}"><em>${esc(sim.names[k] || o.name)}</em> : <b>${o.val}</b></span>`; };
-  /* Valeur verte / jaune cliquée : son trait (ou point, angle, surface) s'affiche en surbrillance dans les vues de face, de côté et de dessus. Un second appui, ou l'appui sur une autre valeur, la retire / la remplace. */
-  /* Paramètre libre (« + » à droite des valeurs vertes) : on en choisit un dans Calculs détaillés (mode édition, seules les cases libres sont cochables) ; une fois validé, il s'affiche en rouge à droite des valeurs vertes (avec sa surbrillance), sans entrer dans la config. */
-  let simPick = null;      // simPick : { sk } pendant le choix ; simProbe : { sk, snap } paramètre libre choisi
-  let simHl = null, simHlPrims = [], simHlLast = null, simHl3 = null;      // simHl3 : la même surbrillance en primitives simples pour la vue 3D (view3d.js) : { frame: 'scr' (repère de l'écran, 2D) | 'world' (repère de l'écran à plat, 3D), items }
-       // simHlLast : dernière valeur jaune montrée puis retirée, rappelable par la flèche jaune
+  const simItem = k => { const o = simIdx.get(k); return `<span class="simItem${simHl === k ? ' simSel' : ''}" data-k="${esc(k)}" style="color:${simColor[0]}" role="button" tabindex="0" title="${simHl === k ? 'Ne plus afficher dans les graphiques' : 'Afficher dans les graphiques'}"><em>${esc(sim.names[k] || o.name)}</em> : <b>${o.val}</b></span>`; };      // favori dans les simulations (vert) ; souligné = dessiné dans les vues
+  /* Favori cliqué (bandeau, liste de l'étoile) : souligné, son trait (ou point, angle, surface) s'affiche en surbrillance dans les vues de face, de côté et de dessus (et dans la 3D). Un second appui, ou l'appui sur un autre favori, la retire / la remplace. */
+  let simHl = null, simHlPrims = [], simHl3 = null;      // simHl3 : la même surbrillance en primitives simples pour la vue 3D (view3d.js) : { frame: 'scr' (repère de l'écran, 2D) | 'world' (repère de l'écran à plat, 3D), items }
   let simTabMove = false;      // changement d'onglet / de ligne par les onglets : le x/x de la barre du haut suit la ligne sélectionnée si elle est dans la config
-  let simFavOnly = false;      // étoile de la barre du haut de Calculs détaillés : n'afficher que les favoris (indépendant de la config « Favoris » du menu déroulant)
-  const isFavRow = sk => !!sk && (simFavCfg.items.some(i => i.sk === sk) || (!!simProbe && simProbe.sk === sk));
-  let simRedIdx = 0, simRedOn = false;      // fenêtre des favoris : favori affiché (0 = n°1, puis les autres) ; simRedOn : surbrillance active (valeur soulignée)
-  let simRedOpen = false;      // fenêtre du paramètre rouge (bouton rouge à gauche des valeurs vertes) : ouverte = le paramètre rouge est sélectionné      // simHlLast : dernière valeur jaune montrée puis retirée, rappelable par la flèche jaune
   function simHlDraw() {      // dessine la surbrillance par-dessus chaque vue (repère de la vue), sans toucher au dessin normal
     [['svgFace', 'face'], ['svgSide', 'side'], ['svgTop', 'top']].forEach(([id, kd]) => {
       const svg = $(id); if (!svg) return; svg.querySelectorAll('.simHlG').forEach(g => g.remove());
@@ -1322,9 +1405,9 @@
   }
   function simHlUpdate() {      // recalcule les traits de la valeur choisie (simIdx doit être à jour), puis les dessine
     simHlPrims = []; simHl3 = null;
-    if (simHl && (!simCfg.on || (!sim.checks.includes(simHl) && simHl !== simRedKey()))) simHl = null;
+    if (simHl && (!simCfg.on || !sim.checks.includes(simHl))) simHl = null;
     if (simHl) {
-      const o = simIdx.get(simHl) || {}, sn = sim.snap[simHl] || (simProbe && simProbe.sk === simHl ? simProbe.snap : ((simFavCfg.items.find(i => i.sk === simHl) || {}).snap || {})), hl = o.hl || sn.hl || [], rt = o.rt || sn.rt || [], one = !!o.one;
+      const o = simIdx.get(simHl) || {}, sn = sim.snap[simHl] || {}, hl = o.hl || sn.hl || [], rt = o.rt || sn.rt || [], one = !!o.one;
       const kind = vw => String(simHl).startsWith('vpe|') ? ['side', 'face', 'top'][vw || 0] : 'face';      // VP à écran : vues côté, face, dessus ; autres onglets : vue de face
       (one ? [hl[0]] : hl).filter(Boolean).forEach(p => simHlPrims.push({ p, kind: kind(p.vw) }));
       rt.filter(m => !one || m.pi === 0).forEach(m => simHlPrims.push({ p: m, kind: kind(m.vw) }));
@@ -1339,7 +1422,6 @@
     simIdx = new Map(); Object.values(tabs).forEach(T => (T.all || []).forEach(o => simIdx.set(o.sk, o)));
     /* Règle : une ligne cochée est conservée. Sa dernière valeur est mémorisée (sim.snap) ; si la ligne n'existe plus (points de VP à écran réinitialisés ou changés…), elle reste cochée et garde sa dernière valeur. Seul un décochage volontaire l'enlève. */
     sim.checks.forEach(k => { const o = simIdx.get(k); if (o) sim.snap[k] = { ...sim.snap[k], name: o.name, val: o.val, f: o.f, cat: o.cat }; else if (sim.snap[k]) simIdx.set(k, { sk: k, ...sim.snap[k], kept: true }); });
-    if (simProbe && !simIdx.has(simProbe.sk)) simIdx.set(simProbe.sk, { sk: simProbe.sk, ...simProbe.snap, kept: true });      // favori n°1 : dernière copie connue si sa ligne n'existe pas dans le calcul affiché
     sim.checks = sim.checks.filter(k => simIdx.has(k));                  // sans copie connue (ancienne mémoire), une ligne disparue ne peut être gardée
     Object.keys(sim.snap).forEach(k => { if (!sim.checks.includes(k)) delete sim.snap[k]; });
     cfgFollow();
@@ -1349,46 +1431,34 @@
     simPaintVals(tog);
     simHlUpdate();
   }
-  function simRemember(was, next) {      // la valeur jaune qu'on quitte reste rappelable par sa flèche
-    if (!was || was === next) return;
-    if (sim.checks.indexOf(was) >= sim.FIRST) simHlLast = was;
+  /* Étoile de la barre du haut : tous les favoris de la config chargée (nom, valeur) ; un appui en souligne un (dessiné dans les vues), un second le retire */
+  let favPanel = null;
+  function buildFavPanel(body) {
+    const c = cfgOf(simCfg.current), ks = sim.checks;
+    { const t = favPanel && favPanel.win.querySelector('.pnlTitle'); if (t) t.innerHTML = 'Favoris <span class="pnlFor">· ' + esc(c ? c.name : 'aucune configuration') + '</span>'; }      // la config chargée peut changer pendant que la fenêtre est ouverte
+    body.classList.add('favBody');
+    body.innerHTML = !ks.length ? `<p class="favEmpty">${c ? 'Aucun favori dans cette configuration.' : 'Aucune configuration chargée.'}<br>Pour en ajouter : ∑ Calculs › Mode édition, puis cocher des lignes de calcul.</p>`
+      : `<div class="favList">${ks.map((k, i) => { const o = simIdx.get(k) || sim.snap[k] || {}; return `<button type="button" class="favRow${simHl === k ? ' on' : ''}" data-k="${esc(k)}" aria-pressed="${simHl === k}" title="${simHl === k ? 'Ne plus afficher dans les graphiques' : 'Afficher dans les graphiques'}"><span class="favNo">${i + 1}</span><em>${esc(sim.names[k] || o.name || simLabel(k))}</em><b>${o.val != null ? o.val : ''}</b></button>`; }).join('')}</div>`
+        + `<p class="favHint">${simCfg.on ? 'Toucher un favori : il est souligné et dessiné dans les vues.' : 'Switch vert éteint : toucher un favori l’allume.'}</p>`;
   }
-  const simRedEff = () => simRedOpen || simCfg.current === 'fav';      // sous « Favoris », les étoiles restent déployées (fenêtre ouverte, non rétractable)
-  const simRedKey = () => simRedIdx > 0 && simFavCfg.items[simRedIdx - 1] ? simFavCfg.items[simRedIdx - 1].sk : simProbe.sk;      // clé du favori affiché dans la fenêtre
-  const simNameOf = k => {      // nom facultatif donné à ce paramètre (valeurs actives, Favoris ou une configuration)
+  function openFavPanel() {
+    if (favPanel) { favPanel.close(); return; }
+    favPanel = Panels.open({ title: 'Favoris', cls: 'pnlSmall', build: buildFavPanel, onClose: () => { favPanel = null; $('starBtn').classList.remove('on'); } });
+    favPanel.refresh(); $('starBtn').classList.add('on');
+    favPanel.body.addEventListener('click', e => {
+      const b = e.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k;
+      if (!simCfg.on) { simCfg.on = true; simHl = k; simChanged(); } else simToggleHl(k);      // switch éteint : il s'allume, avec ce favori souligné
+    });
+  }
+  const simNameOf = k => {      // nom facultatif donné à ce favori (valeurs actives ou une configuration)
     if (sim.names[k]) return sim.names[k];
-    for (const c of [simFavCfg, ...simCfg.cfgs]) { const i = (c.items || []).find(x => x.sk === k && (x.name || '').trim()); if (i) return i.name.trim(); }
+    for (const c of simCfg.cfgs) { const i = (c.items || []).find(x => x.sk === k && (x.name || '').trim()); if (i) return i.name.trim(); }
     return '';
   };
-  function simPaintVals(tog) {
-    if (simCfg.current === 'fav' && !simRedOpen) { simRedOpen = true; if (simRedOn && simHl == null) simHl = simRedKey(); }      // « Favoris » : fenêtre toujours ouverte      // vues principale / plein écran : 3 valeurs vertes (+ valeur jaune choisie, ou flèche jaune de rappel) ; la fenêtre rouge (coulissante) porte le paramètre libre choisi ou « sélectionner un paramètre »
-    const i = simHl ? sim.checks.indexOf(simHl) : -1, yl = i >= sim.FIRST && simIdx.has(simHl) ? simItem(simHl, i) : '';
-    if (simProbe && simProbe.sk && simIdx.has(simProbe.sk)) { const o = simIdx.get(simProbe.sk); simProbe.snap = { ...simProbe.snap, name: simProbe.custom || simNameOf(simProbe.sk) || o.name, val: o.val }; }      // valeur du paramètre libre : suit le calcul
-    if (simHlLast && sim.checks.indexOf(simHlLast) < sim.FIRST) simHlLast = null;      // la valeur jaune rappelable n'existe plus (décochée) ou n'est plus jaune
-    const lbl = simHlLast ? sim.names[simHlLast] || (simIdx.get(simHlLast) || {}).name || '' : '';
-    const back = !yl && simHlLast ? `<span class="simUndo" role="button" tabindex="0" data-k="${esc(simHlLast)}" title="Rappeler : ${esc(lbl)}" aria-label="Rappeler : ${esc(lbl)}"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></span>` : '';      // flèche jaune à rebours
-    if (simRedIdx > simFavCfg.items.length) simRedIdx = 0;
-    const fi = simRedIdx > 0 ? simFavCfg.items[simRedIdx - 1] : null, tot = 1 + simFavCfg.items.length;
-    const fo = fi ? simIdx.get(fi.sk) || {} : null, fname = fi ? (fi.name || '').trim() || (fo && fo.name) || fi.label || fi.sk : simProbe.snap.name, fval = fi ? (fo && fo.val != null ? fo.val : (fi.snap && fi.snap.val) || '') : simProbe.snap.val;
-    const red = `<span class="simRedNav${tot > 1 ? '' : ' off'}" role="button" tabindex="0" data-d="-1" title="Favori précédent" aria-label="Favori précédent">‹</span><span class="simProbeTxt${simRedOn ? ' simSel' : ''}" role="button" tabindex="0" title="${simRedOn ? 'Masquer la surbrillance dans les graphiques' : 'Afficher la surbrillance dans les graphiques'}"><em>${esc(fname)}</em> : <b>${fval}</b></span><span class="simRedEye" role="button" tabindex="0" title="Aperçu des favoris" aria-label="Aperçu des favoris">${ic('eye')}</span><span class="simRedNo${simRedIdx === 0 ? ' on' : ''}" role="button" tabindex="0" title="Aller au favori 1/${tot}" aria-label="Aller au favori 1">${simRedIdx + 1}/${tot}</span><span class="simRedNav${tot > 1 ? '' : ' off'}" role="button" tabindex="0" data-d="1" title="Favori suivant" aria-label="Favori suivant">›</span>`;
-    paintSim(tog === undefined ? simTogHtml() : tog, simCfg.on ? (sim.checks.slice(0, sim.FIRST).map(simItem).join('') + yl + back) || (simCfg.current === 'fav' ? '\u200b' : '') : '', (simCfg.on ? `<div class="simRow">${sim.checks.map(simItem).join('')}</div>` : ''), red);
-  }
-  const simRedClass = () => {      // ouvre / ferme la fenêtre rouge (coulisse en 0,8 s : seule la classe change, les éléments restent en place)
-    document.querySelectorAll('.simVals, .simFull').forEach(el => { el.classList.toggle('redOpen', simRedEff()); el.classList.toggle('favLock', simCfg.current === 'fav'); });
-    document.querySelectorAll('.simRedBtn').forEach(b => { b.setAttribute('aria-pressed', String(simRedOpen)); b.title = simRedOpen ? 'Revenir aux valeurs vertes' : (simProbe ? 'Afficher le paramètre rouge' : 'Choisir un paramètre (rouge)'); });
-  };
-  function simRedSet(open) {      // (sous « Favoris » : non rétractable)
-    if (simCfg.current === 'fav') return;
-    // fenêtre ouverte : le favori affiché est sélectionné (surbrillance dans les vues) tant que sa valeur est soulignée
-    simRedOpen = open; const k = simRedKey();
-    if (open) { simRemember(simHl, k); simHl = simRedOn ? k : null; }
-    else if (simHl === k) simHl = null;
-    simRedClass(); if (simCfg.on) simPaintVals(); simHlUpdate();
-  }
-  function simRedStep(d) {      // flèches : passer d'un favori à l'autre
-    const tot = 1 + simFavCfg.items.length; if (tot < 2) return;
-    simRedIdx = (simRedIdx + d + tot) % tot; if (simRedOpen) simHl = simRedOn ? simRedKey() : null;
-    simPaintVals(); simHlUpdate();
+  function simPaintVals(tog) {      // bandeau : tous les favoris de la config chargée, en vert, sur une ligne qui défile ; vue compacte : tous, 3 par ligne
+    const items = simCfg.on ? sim.checks.filter(k => simIdx.has(k)).map(simItem).join('') : '';
+    paintSim(tog === undefined ? simTogHtml() : tog, items, simCfg.on ? `<div class="simRow">${items}</div>` : '');
+    if (favPanel) favPanel.refresh();
   }
   /* Tous les switchs verts : rond de 36 px. Dedans : 5 × 5 petits carrés en dégradé vert, rognés par le rond. Celui du haut est collé à gauche de ∑ Calculs (les deux contours forment un huit horizontal, orbite dans simOrbit) ;
      les autres (vues agrandies, plein écran, Calculs détaillés) portent leur propre orbite : un point brillant + traîne qui tourne autour du rond (rotation CSS d'un conteneur, exécutée par le GPU).
@@ -1448,14 +1518,29 @@
   ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { simRel = 0; }, true));
   const simTogHtml = () => sim.checks.length ? `<button type="button" class="simTog${simCfg.on ? ' on' : ''}" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations'}">${simRound()}</button>` : '';
   const renderSimOff = () => { const t = simTogHtml(); paintSim(t, '', ''); simHl = null; simHlUpdate(); };      // valeurs désactivées : seul le bouton vert reste, sans aucun calcul
-  function simFill(el, first, red) {      // contenu d'un bandeau de valeurs : [bouton rouge][valeurs vertes][fenêtre rouge coulissante] ; la structure reste en place pour que l'ouverture / fermeture s'anime
-    if (!first) { if (el.firstChild) el.innerHTML = ''; el.classList.remove('redOpen'); return; }
-    if (!el.querySelector(':scope > .simGrn')) el.innerHTML = '<button type="button" class="simRedBtn" aria-label="Paramètre rouge"></button><span class="simGrn"></span><div class="simRedWin"></div>';
-    el.querySelector(':scope > .simGrn').innerHTML = first; el.querySelector(':scope > .simRedWin').innerHTML = red || '';
-    el.classList.toggle('redOpen', simRedEff()); el.classList.toggle('favLock', simCfg.current === 'fav');
-    const b = el.querySelector(':scope > .simRedBtn'); b.setAttribute('aria-pressed', String(simRedOpen)); b.title = simRedOpen ? 'Revenir aux valeurs vertes' : (simProbe ? 'Afficher le paramètre rouge' : 'Choisir un paramètre (rouge)');
+  /* Bandeau des favoris : [valeurs vertes sur une ligne, qui défile à l'horizontale (pavé tactile, molette, doigt)] [« 1/8 » : rang du 1er favori visible / nombre de favoris] ; la structure reste en place (défilement gardé) */
+  function simFill(el, html) {
+    if (!html) { if (el.firstChild) el.innerHTML = ''; el.classList.remove('simScroll'); return; }
+    let g = el.querySelector(':scope > .simGrn');
+    if (!g) {
+      el.innerHTML = '<span class="simGrn"></span><span class="simCount" title="Rang du premier favori visible / nombre de favoris de la configuration"></span>'; g = el.firstChild;
+      g.addEventListener('scroll', () => simCount(el), { passive: true });
+      g.addEventListener('wheel', e => {      // molette verticale (souris) : défilement horizontal des favoris
+        if (g.scrollWidth <= g.clientWidth + 1 || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+        e.preventDefault(); e.stopPropagation(); g.scrollLeft += e.deltaY;
+      }, { passive: false });
+    }
+    if (g.innerHTML !== html) { const sl = g.scrollLeft; g.innerHTML = html; g.scrollLeft = sl; }
+    simCount(el);
   }
-  function paintSim(tog, first, all, red) {      // tog : bouton vert (dans la bande du haut ; repris dans les vues agrandies) ; first : valeurs de la vue principale ; all : valeurs de la vue compacte
+  function simCount(el) {
+    const g = el.querySelector(':scope > .simGrn'), c = el.querySelector(':scope > .simCount'); if (!g || !c) return;
+    const its = g.querySelectorAll('.simItem'), n = its.length, gl = g.getBoundingClientRect().left;
+    let i = 0; for (; i < n; i++) if (its[i].getBoundingClientRect().right > gl + 6) break;
+    const t = n ? `${Math.min(i, n - 1) + 1}/${n}` : ''; if (c.textContent !== t) c.textContent = t;
+    el.classList.toggle('simScroll', g.scrollWidth > g.clientWidth + 1);      // plus de favoris que de place : léger fondu au bord droit
+  }
+  function paintSim(tog, first, all) {      // tog : bouton vert (dans la bande du haut ; repris dans les vues agrandies) ; first : favoris du bandeau (une ligne qui défile) ; all : favoris de la vue compacte
     { const nm = (cfgOf(simCfg.current) || {}).name || ''; document.querySelectorAll('.cfgNm').forEach(e => { if (e.textContent !== nm) e.textContent = nm; }); }      // nom de la config active sous les switchs (hors Calculs détaillés)
     if (window.Layout3D) Layout3D.simSwitch(simCfg.on);      // page VP : le bandeau données se déploie quand le switch passe sur ON
     const top = $('simTopTog'); if (top) { top.hidden = !tog; if (tog && !top.firstChild) top.innerHTML = simRound(false, true); if (tog) simOrbit(); top.classList.toggle('on', simCfg.on); top.setAttribute('aria-pressed', String(simCfg.on)); top.title = simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations'; }
@@ -1464,26 +1549,17 @@
       let b = c.querySelector('.simFullTog'); if (!b) { b = document.createElement('button'); b.type = 'button'; b.className = 'simTog simFullTog'; b.setAttribute('aria-label', 'Valeurs dans les simulations'); b.innerHTML = simRound(true, true); c.append(b); }
       b.hidden = !tog; b.classList.toggle('on', simCfg.on); b.setAttribute('aria-pressed', String(simCfg.on)); b.title = simCfg.on ? 'Masquer les valeurs dans les simulations' : 'Afficher les valeurs dans les simulations';
     });
-    document.querySelectorAll('.simFull').forEach(el => simFill(el, first, red));                           // vue agrandie : les 3 premières, en bas du grand graphique
-    [['simVals', first], ['simVals2', all]].forEach(([id, html]) => { const el = $(id); if (!el) return; if (id === 'simVals') simFill(el, html, red); else el.innerHTML = html; el.hidden = !html; });      // vue principale : les 3 premières ; vue compacte : toutes, 3 par ligne
+    document.querySelectorAll('.simFull').forEach(el => simFill(el, first));
+    [['simVals', first], ['simVals2', all]].forEach(([id, html]) => { const el = $(id); if (!el) return; if (id === 'simVals') simFill(el, html); else el.innerHTML = html; el.hidden = !html; });      // bandeau : une ligne qui défile ; vue compacte : tous, 3 par ligne
   }
   document.addEventListener('click', e => { if (e.target.closest && e.target.closest('.simTog')) {      // seul le bouton rond vert agit comme interrupteur
        simCfg.on = !simCfg.on; simChanged(); return; }
-    const it = e.target.closest && e.target.closest('.simItem[data-k]'); if (it) {      // appui sur une valeur : surbrillance dans les vues (ou retrait)
-      const was = simHl, next = simHl === it.dataset.k ? null : it.dataset.k; simRemember(was, next); simHl = next;
-      if (simRedOpen && simCfg.current !== 'fav' && next !== simRedKey()) { simRedOpen = false; simRedClass(); }      // une autre valeur choisie : la fenêtre rouge se referme
-      if (simCfg.on) simPaintVals(); simHlUpdate(); return; }
-    if (e.target.closest && e.target.closest('.simRedBtn')) { if (simCfg.current !== 'fav') simRedSet(!simRedOpen); return; }      // bouton rouge : ouvre / ferme la fenêtre du paramètre rouge
-    if (e.target.closest && e.target.closest('.simRedNo')) { if (simRedIdx !== 0) { simRedIdx = 0; if (simRedOpen) simHl = simRedOn ? simRedKey() : null; simPaintVals(); simHlUpdate(); } return; }      // « N°1 » : retour rapide au favori n°1
-    const rn = e.target.closest && e.target.closest('.simRedNav'); if (rn) { if (!rn.classList.contains('off')) simRedStep(+rn.dataset.d); return; }      // flèches ‹ › : favori précédent / suivant
-    if (e.target.closest && e.target.closest('.simRedEye')) { openSimModal('edit', 'fav'); return; }      // œil : aperçu des Favoris (c'est là qu'on change le favori n°1)
-    if (e.target.closest && e.target.closest('.simProbeTxt')) { simRedOn = !simRedOn; if (simRedOpen) simHl = simRedOn ? simRedKey() : null; simPaintVals(); simHlUpdate(); return; }      // clic sur la valeur : surbrillance active (soulignée) / inactive
-    if (e.target.closest && e.target.closest('.simPlus, .simPickTxt')) { simPickStart(); return; }      // « + » / « sélectionner un paramètre » : choisir (ou modifier) le paramètre dans Calculs détaillés
-    const ud = e.target.closest && e.target.closest('.simUndo[data-k]'); if (ud) { simRemember(simHl, ud.dataset.k); simHl = ud.dataset.k; if (simRedOpen && simCfg.current !== 'fav') { simRedOpen = false; simRedClass(); } if (simCfg.on) simPaintVals(); simHlUpdate(); } });      // flèche jaune : rappelle la valeur
+    const it = e.target.closest && e.target.closest('.simItem[data-k]'); if (it) simToggleHl(it.dataset.k); });      // appui sur un favori : souligné et dessiné dans les vues (ou retrait)
+  function simToggleHl(k) { simHl = simHl === k ? null : k; if (simCfg.on) simPaintVals(); simHlUpdate(); if (favPanel) favPanel.refresh(); }
   /* ---- configurations ---- */
-  const cfgOf = id => id === 'fav' ? simFavCfg : simCfg.cfgs.find(c => c.id === id);
-  const lockedCfg = id => FIXED.includes(id) || id === 'fav';      // nom figé et suppression impossible : Config A, B, C et Favoris
-  const fixedName = c => c.id === 'fav' ? 'Favoris' : FIXED.includes(c.id) ? 'Config ' + c.id : null;
+  const cfgOf = id => simCfg.cfgs.find(c => c.id === id);
+  const lockedCfg = id => FIXED.includes(id);      // nom figé et suppression impossible : Config A, B, C
+  const fixedName = c => FIXED.includes(c.id) ? 'Config ' + c.id : null;
   const FIXED = ['A', 'B', 'C'];                                         // Config A, B, C : modifiables, jamais supprimables
   const fromCurrent = () => sim.checks.map(sk => ({ sk, label: simLabel(sk), name: sim.names[sk] || '', snap: sim.snap[sk] }));
   /* Chaque ligne d'une config garde une copie (valeur, dessin, points créés) pour être recalculée quand elle n'est plus sélectionnée. Celle de la config ACTIVE suit la ligne en direct : sans cela, une valeur modifiée revenait
@@ -1579,49 +1655,16 @@
     const bt = (a, d, t, off) => `<button type="button" class="simUr" data-act="${a}" title="${t}" aria-label="${t}"${off ? ' disabled' : ''}><svg viewBox="0 0 24 24"><path d="${d}"/></svg></button>`;
     return bt('undoE', 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5', 'Annuler la dernière modification', !simEH.length) + bt('redoE', 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5', 'Rétablir', !simEF.length);
   };
-  const simEditDirty = () => {      // un changement a eu lieu en mode édition : lignes jaunes / rouges, remplacement choisi, config ou aperçu en attente modifiés
-    if (!simEdit) return false; return simFavDirty() || simCfgChg();
-  };
-  const simCfgChg = () => {      // modifications de la configuration elle-même (sans les favoris)
+  const simEditDirty = () => simEdit && simCfgChg();      // un changement a eu lieu en mode édition : lignes jaunes / rouges, remplacement choisi, config ou aperçu en attente modifiés
+  const simCfgChg = () => {      // modifications de la configuration (ses favoris, leurs noms, son nom)
     const c = cfgOf(simCfg.current); if (!c) return false;
     const st = simBackState, nameChg = !!st && st.id === c.id && !lockedCfg(c.id) && (st.name || '').trim() && (st.name || '').trim() !== c.name;
     return cfgDirty(c) || simDel.size > 0 || !!(simRepl && !simRepl.done && simRepl.nw) || !!nameChg;
   };
-  function simFavToggle(row) {      // étoile : ajoute / retire la ligne des Favoris (configuration « Favoris ») ; le favori par défaut (bouton à cercles, étoile entourée) n'est pas modifiable ici ; sous « Favoris », une ligne ajoutée est déjà favorite
-    const k = row && row.sk; if (!k || (simProbe && simProbe.sk === k)) return;
-    const it = simFavCfg.items, i = it.findIndex(x => x.sk === k), live = simCfg.current === 'fav', inChecks = sim.checks.includes(k);
-    if (i >= 0 || (live && inChecks)) {      // déjà favorite : on la retire (et des valeurs affichées si « Favoris » est la config active)
-      if (i >= 0) it.splice(i, 1);
-      if (live) { const at = sim.checks.indexOf(k); if (at >= 0) sim.checks.splice(at, 1); delete sim.names[k]; delete sim.snap[k]; simAcc.delete(k); }
-    } else {
-      const snap = { name: row.n, val: String(row.val == null ? '' : row.val).replace(/<[^>]*>/g, ''), f: row.f, hl: row.hl, rt: row.rt, hl3: row.hl3, rt3: row.rt3, t: row.t };
-      if (String(k).startsWith('vpe|')) Object.assign(snap, { x: !!vpe.full, pts: vpe.pts.slice(), cust: vpe.custom.filter(c => vpe.pts.includes(c.id)).map(c => ({ ...c, p: c.p.slice() })) });
-      it.push({ sk: k, label: simLabel(k) || row.n, name: sim.names[k] || '', snap });
-      if (live && !inChecks) { sim.checks.push(k); sim.snap[k] = snap; }
-    }
-    simChanged();
-  }
-  function simPickStart(fromPanel, fromPrefs) {      // « + » : Calculs détaillés en mode édition pour choisir un paramètre (n'importe lequel) ; fromPanel : lancé depuis l'aperçu, on y revient à la validation
-    if (!simCfg.on) return; simFavOnly = false; if (!fromPanel) simBackState = null; simRepl = null; simDel.clear(); simPick = { sk: null, fromPanel: !!fromPanel, fromPrefs: !!fromPrefs };
-    simSetEdit(true); simOpenDetails(); renderSimHead();
-  }
-  function simPickDo() {      // « valider la sélection » : retour à la vue d'avant ; le paramètre choisi s'affiche en rouge à droite des valeurs vertes
-    const k = simPick && simPick.sk; if (!k) return;
-    const given = ((simPick.editing ? simPick.draft : simPick.name) || '').trim();      // nom donné avec le stylo (saisie en cours reprise telle quelle)
-    const t = String(k).split('|')[0], r = G.compute(vpOf(), S), row = ((buildDetails(r)[t] || {}).rows || []).find(x => x.sk === k) || {}, o = simIdx.get(k) || {};
-    simProbe = { sk: k, custom: given, snap: { name: given || simNameOf(k) || o.name || row.n || String(k).split('|')[1] || k, val: o.val != null ? o.val : String(row.val == null ? '' : row.val).replace(/<[^>]*>/g, ''), hl: row.hl || o.hl, rt: row.rt || o.rt, hl3: row.hl3 || o.hl3, rt3: row.rt3 || o.rt3, one: !!(row.one || o.one) } };
-    simSave();      // le favori n°1 est mémorisé
-    const back = simPick.fromPanel && simBackState, prefs = simPick.fromPrefs; simPick = null;
-    if (prefs) { $('details').classList.remove('open'); $('detBtn').classList.remove('on'); simSetEdit(false); renderSimSettings(); return; }      // lancé depuis les Préférences : on y revient
-    if (back) { simBackState.selProbe = true; simBackState.flashProbe = true; simBackRestore(); return; }      // lancé depuis l'aperçu : on y revient (la ligne du favori par défaut clignote)
-    simHl = k; simRedOpen = true; simRedIdx = 0; simRedOn = true;      // sinon : la fenêtre bleue s'ouvre sur le nouveau favori n°1
-    $('details').classList.remove('open'); $('detBtn').classList.remove('on');
-    simSetEdit(false); simPaintVals(); simHlUpdate();
-  }
   function simSetEdit(on) {      // active / quitte le mode édition (fond, contour et cases à cocher changent en fondu de 1,5 s)
     if (simEdit === on) return; simEdit = on; simEH = []; simEF = [];
     $('details').classList.toggle('edit', on); { const h = document.querySelector('#details .dhead h3'); if (h) h.textContent = on ? 'Mode édition' : 'Calculs détaillés'; }      // le titre de la fenêtre suit le mode
-    if (!on) { simDel.clear(); simRepl = null; simAcc.clear(); simPick = null; }
+    if (!on) { simDel.clear(); simRepl = null; simAcc.clear(); }
     renderSimHead(); render();
   }
   function simDiscardPending() {      // changements non validés abandonnés : lignes jaunes décochées, lignes rouges rendues, remplacement annulé
@@ -1644,13 +1687,12 @@
       if (c) c.items = fromCurrent();
       if (st && st.id && st.id !== simCfg.current && cfgOf(st.id)) cfgOf(st.id).items = st.items.map(i => ({ sk: i.sk, label: i.label, name: (i.name || '').trim(), snap: i.snap }));      // aperçu en attente d'une autre config : enregistré aussi
       if (st && c && st.id === c.id && !lockedCfg(c.id)) { const nm = (st.name || '').trim(); if (nm) c.name = nm; }      // nom de la config modifié dans l'aperçu
-      simFavSaved = JSON.stringify(simFavCfg.items); simAcc.clear(); simBackState = null; if (exitAfter) simSetEdit(false); simChanged(); if (then) then();
+      simAcc.clear(); simBackState = null; if (exitAfter) simSetEdit(false); simChanged(); if (then) then();
     };
-    if (c && FIXED.includes(c.id) && simCfgChg()) warnDefault(run); else run();      // l'avertissement « config par défaut » ne concerne que les modifications de la config (pas les favoris)
+    if (c && FIXED.includes(c.id) && simCfgChg()) warnDefault(run); else run();      // config par défaut (A, B, C) : avertissement avant d'enregistrer
   }
   function simAbandonEdit(then) {      // modifications non sauvegardées abandonnées : la config enregistrée est rechargée, retour à Calculs détaillés
     const c = cfgOf(simCfg.current), dirty = simEditDirty(); simBackState = null; simSetEdit(false);
-    if (simFavDirty()) simFavCfg.items = JSON.parse(simFavSaved);      // favoris ajoutés / retirés non sauvegardés : abandonnés
     if (c && dirty) applyCfg(c.id);
     if (then) then();
   }
@@ -1661,33 +1703,24 @@
     warnDefault(() => simSaveEdit(true, back), () => simAbandonEdit(back), 'Sauvegarder les modifications ?', ['non', 'oui'], () => { /* Échap : on reste en mode édition */ });
   }
   const smLeaveDirty = () => smPanelDirty() || (simEdit && simEditDirty());      // modification en cours (aperçu modifié, ou changements non sauvegardés du mode édition)
-  function smSelValid() {      // « valider la sélection » : les favoris cochés rejoignent la configuration en cours d'édition, les décochés en sortent (sans toucher aux autres lignes) ; on revient au mode édition
-    const items = modal.items, sel = modal.selSet, keys = [...items.map(i => i.sk), ...(simProbe ? [simProbe.sk] : [])];
-    const adds = keys.filter(k => sel.has(k) && !sim.checks.includes(k)), rems = keys.filter(k => !sel.has(k) && sim.checks.includes(k));
-    closeSimModal(); if (!adds.length && !rems.length) return;
-    simPushE();
-    adds.forEach(k => { const it = items.find(i => i.sk === k) || { name: '', snap: simProbe.snap }; sim.checks.push(k); if (it.name) sim.names[k] = it.name; if (it.snap) sim.snap[k] = { ...it.snap }; simAcc.add(k); });
-    rems.forEach(k => { const at = sim.checks.indexOf(k); if (at >= 0) sim.checks.splice(at, 1); delete sim.names[k]; delete sim.snap[k]; simAcc.delete(k); simDel.delete(k); });
-    simChanged();
-  }
   function smGoEdit() {      // sortie de l'aperçu : sans modification en cours on revient simplement à Calculs détaillés ; sinon on passe par le mode édition (l'aperçu reste en attente, l'œil y revient)
-    if (!modal || modal.view !== 'edit' || modal.selFor) { closeSimModal(); return; }      // (mode sélectif : annulation)
+    if (!modal || modal.view !== 'edit') { closeSimModal(); return; }
     if (!smLeaveDirty()) { closeSimModal(); return; }
     const cur = modal.sel != null ? modal.items[modal.sel] : null, st = smPark(); st.selSk = cur ? cur.sk : null; st.add = false; simSetEdit(true); simOpenDetails(); simBackShow(st);
   }
   function simModalQuit() { simDiscardPending(); closeSimModal(); simSetEdit(false); simChanged(); }      // « Quitter » (ou appui à côté / Échap) : rien n'est enregistré, retour à l'affichage simple
   const simReplEnd = () => { simRepl = null; };      // fermeture de Calculs détaillés : le rouge et le vert s'effacent, le jaune attend sa validation
-  function simChanged() { if (!simCfg.on && simEdit) simEditCancel(); simSave(); renderSimHead(); renderSimSettings(); render(); }
+  function simChanged() { if (!simCfg.on && simEdit) simEditCancel(); simSave(); renderSimHead(); renderSimSettings(); render(); if (favPanel) favPanel.refresh(); }
   function applyCfg(id) {
-    { const was = simCfg.current; simHl = null; simRedOn = false; if (id === 'fav') simRedOpen = true; else if (was === 'fav') simRedOpen = false; }      // chargement d'une config : aucune valeur sélectionnée (ni soulignée, ni surbrillance) ; « Favoris » : étoiles déployées
+    simHl = null;      // chargement d'une config : aucun favori sélectionné (ni souligné, ni surbrillance)
     simBackState = null; simRepl = null;      // un aperçu mis en attente appartenait à la config précédente
-    simDel.clear(); simAcc.clear(); simEH = []; simEF = []; const c = cfgOf(id); simCfg.current = id; sim.checks = []; sim.names = {}; sim.editing = null; simNav = id === 'fav' && simProbe ? 0 : -1;      // « Favoris » : le favori par défaut est le n° 1
+    simDel.clear(); simAcc.clear(); simEH = []; simEF = []; const c = cfgOf(id); simCfg.current = id; sim.checks = []; sim.names = {}; sim.editing = null; simNav = -1;
     if (c) c.items.forEach(i => { sim.checks.push(i.sk); if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = i.snap; });
     simChanged();
   }
   /* Flèches haut / bas à droite du menu des configurations : affichent une à une les lignes de la configuration en cours (onglet de la ligne ouvert, ligne sélectionnée, dessinée dans les vues) */
   let simNav = -1;
-  const simNavKeys = () => simFavOnly ? [simProbe.sk, ...simFavCfg.items.map(i => i.sk).filter(k => k !== simProbe.sk)] : simCfg.current === 'fav' && simProbe ? [simProbe.sk, ...sim.checks.filter(k => k !== simProbe.sk)] : sim.checks;      // sous « Favoris », le favori par défaut est la valeur n° 1 (1/x)
+  const simNavKeys = () => sim.checks;      // les favoris de la config chargée
   function simStep(dir) {
     const ks = simNavKeys(), n = ks.length; if (!n) return;
     if (simNav < 0 || simNav >= n) simNav = dir > 0 ? -1 : 0;
@@ -1704,21 +1737,20 @@
     $('detBtn').classList.toggle('simOff', !simCfg.on);      // contour du bouton ∑ Calculs assombri quand l'interrupteur est sur OFF
     const el = $('simHead'); if (!el) return;
     const cur = cfgOf(simCfg.current), n = simNavKeys().length, dis = simCfg.on ? '' : ' disabled';
-    const opts = (cur ? '' : '<option value="" disabled hidden selected>Choisir une configuration</option>') + simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${c.id === simCfg.current ? ' selected' : ''}>${esc(c.name)}</option>`).join('') + `<option disabled>──────────</option><option value="fav"${simCfg.current === 'fav' ? ' selected' : ''}>Favoris</option>`;      // Favoris : en bas, séparé des configurations
+    const opts = (cur ? '' : '<option value="" disabled hidden selected>Choisir une configuration</option>') + simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${c.id === simCfg.current ? ' selected' : ''}>${esc(c.name)}</option>`).join('') + '';
     const act = (a, ico, title, off, cls = '', tip = true) => `<button type="button" class="${cls}" data-act="${a}"${tip ? ` title="${title}"` : ''} aria-label="${title}"${off ? ' disabled' : ''}>${ic(ico)}</button>`;
     const canDel = cur && !lockedCfg(cur.id), pos = simNav >= 0 && simNav < n ? `${simNav + 1}/${n}` : String(n);      // « 3/5 » : ligne active / total ; « 5 » : aucune ligne active
-    const navHtml = `<span class="simNavBox${simNav >= 0 && simNav < n ? (simCfg.current === 'fav' || simFavOnly ? (simProbe && simNav === 0 ? ' nvb' : ' nvl') : simNav < sim.FIRST ? ' nvg' : ' nvy') : ''}"${simCfg.on ? '' : ' style="visibility:hidden"'}><span class="simCnt"${simCfg.on ? '' : ' style="visibility:hidden"'}>valeurs</span><span class="simNav"><button type="button" data-n="-1" aria-label="Ligne précédente de la configuration" title="Ligne précédente de la configuration"${dis}><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button><span class="simPos"${simCfg.on ? '' : ' style="visibility:hidden"'}>${pos}</span><button type="button" data-n="1" aria-label="Ligne suivante de la configuration" title="Ligne suivante de la configuration"${dis}><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></span></span>`;
+    const navHtml = `<span class="simNavBox${simNav >= 0 && simNav < n ? (simNav < sim.FIRST ? ' nvg' : ' nvy') : ''}"${simCfg.on ? '' : ' style="visibility:hidden"'}><span class="simCnt"${simCfg.on ? '' : ' style="visibility:hidden"'}>favoris</span><span class="simNav"><button type="button" data-n="-1" aria-label="Favori précédent de la configuration" title="Favori précédent de la configuration"${dis}><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button><span class="simPos"${simCfg.on ? '' : ' style="visibility:hidden"'}>${pos}</span><button type="button" data-n="1" aria-label="Favori suivant de la configuration" title="Favori suivant de la configuration"${dis}><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></span></span>`;
     const mainHtml = (simEdit ? '' : `<button class="simSw${simCfg.on ? ' on' : ''}" id="simSw" aria-pressed="${simCfg.on}" aria-label="Valeurs dans les simulations" title="${simCfg.on ? 'Désactiver les valeurs dans les simulations' : 'Activer les valeurs dans les simulations'}">${simRound(false)}</button>`)
       + (simEdit ? '' : `<select id="simSel" aria-label="Configuration"${dis}${simCfg.on ? '' : ' style="visibility:hidden"'}>${opts}</select>`)
-    const actHtml = `<span class="simAct">${simEdit ? '' : act('add', 'add', 'Ajouter une configuration', false, simCfg.on ? '' : 'hid')}${simEdit ? '' : act('del', hdrArm === 'del' ? 'ok' : 'del', hdrArm === 'del' ? 'Confirmer la suppression (cliquer de nouveau)' : canDel ? 'Supprimer la configuration' : 'Supprimer la configuration (impossible pour A, B et C)', !canDel, [hdrArm === 'del' ? 'danger' : '', simCfg.on ? '' : 'hid'].join(' ').trim())}${simEdit ? `<button type="button" class="simSave${simEditDirty() ? ' on' : ''}${simCfg.on ? '' : ' hid'}" data-act="saveE" title="${simEditDirty() ? 'Sauvegarder les changements' : 'Aucun changement à sauvegarder'}" aria-label="Sauvegarder les changements"${simEditDirty() ? '' : ' disabled'}>${ic('disk')}</button>` : `<button type="button" class="simEditBtn${simCfg.on ? '' : ' hid'}" data-act="mode" title="Modifier les valeurs cochées">Mode édition</button>`}${simUrHtml()}${act('edit', 'eye', 'Aperçu des configurations', !simCfg.cfgs.length, simCfg.on ? '' : 'hid')}<button type="button" class="simFavGo${simFavOnly ? ' on' : ''}${simCfg.on ? '' : ' hid'}" data-act="gofav" title="${simEdit && simCfg.current !== 'fav' ? 'sélectionner des favoris' : 'Aperçu des favoris'}" aria-label="${simEdit && simCfg.current !== 'fav' ? 'sélectionner des favoris' : 'Aperçu des favoris'}"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 17l-5.2 2.7 1-5.9-4.3-4.1 5.9-.8z"/></svg></button></span>`;
-    el.innerHTML = simEdit ? `<span class="simEdLeft"><span class="simEdBar"></span>${actHtml}</span><span class="simEditName" title="Configuration en cours d'édition"><span class="simEdTxt">${esc((cur || {}).name || '')}</span>${navHtml}</span>` : navHtml + mainHtml + actHtml;      // mode édition : [barre | disquette, annuler/rétablir, œil, étoile] à gauche ; nom de la config centré, avec les flèches et x/x à sa droite
+    const actHtml = `<span class="simAct">${simEdit ? '' : act('add', 'add', 'Ajouter une configuration', false, simCfg.on ? '' : 'hid')}${simEdit ? '' : act('del', hdrArm === 'del' ? 'ok' : 'del', hdrArm === 'del' ? 'Confirmer la suppression (cliquer de nouveau)' : canDel ? 'Supprimer la configuration' : 'Supprimer la configuration (impossible pour A, B et C)', !canDel, [hdrArm === 'del' ? 'danger' : '', simCfg.on ? '' : 'hid'].join(' ').trim())}${simEdit ? `<button type="button" class="simSave${simEditDirty() ? ' on' : ''}${simCfg.on ? '' : ' hid'}" data-act="saveE" title="${simEditDirty() ? 'Sauvegarder les changements' : 'Aucun changement à sauvegarder'}" aria-label="Sauvegarder les changements"${simEditDirty() ? '' : ' disabled'}>${ic('disk')}</button>` : `<button type="button" class="simEditBtn${simCfg.on ? '' : ' hid'}" data-act="mode" title="Modifier les valeurs cochées">Mode édition</button>`}${simUrHtml()}${act('edit', 'eye', 'Aperçu des configurations', !simCfg.cfgs.length, simCfg.on ? '' : 'hid')}</span>`;
+    el.innerHTML = simEdit ? `<span class="simEdLeft"><span class="simEdBar"></span>${actHtml}</span><span class="simEditName" title="Configuration en cours d'édition"><span class="simEdTxt">${esc((cur || {}).name || '')}</span>${navHtml}</span>` : navHtml + mainHtml + actHtml;      // mode édition : [barre | disquette, annuler/rétablir, œil] à gauche ; nom de la config centré, avec les flèches et x/x à sa droite
     el.querySelectorAll('.simNav button').forEach(b => { b.onclick = () => simStep(+b.dataset.n); });
     { const sw = $('simSw'); if (sw) sw.onclick = () => { simCfg.on = !simCfg.on; simChanged(); }; }
     el.querySelectorAll('.simAct button[data-act]').forEach(b => {
       b.onclick = () => {
         const a = b.dataset.act, c = cfgOf(simCfg.current);
         if (a === 'mode') simSetEdit(true);
-        else if (a === 'gofav') { simFavOnly = false; if (!simEdit) { applyCfg('fav'); openSimModal('edit', 'fav'); } else if (simCfg.current === 'fav') openSimModal('edit', 'fav'); else openSimModal('edit', 'fav', null, { selFor: simCfg.current }); }      // étoile : hors édition, charge et ouvre « Favoris » ; en édition d'une autre config : aperçu des favoris en mode sélectif ; en édition de « Favoris » : aperçu normal
         else if (a === 'back') simBackEdit();
         else if (a === 'saveE') simSaveEdit(false);
         else if (a === 'undoE') simUndoE();
@@ -1730,7 +1762,7 @@
         }
       };
     });
-    const sel = $('simSel'); if (sel) sel.onchange = () => { if (sel.value) { applyCfg(sel.value); if (sel.value === 'fav' && simProbe) simGoto(simProbe.sk); } };      // « Favoris » : la sélection se place d'abord sur le favori par défaut (son onglet, sa ligne, son graphique)
+    const sel = $('simSel'); if (sel) sel.onchange = () => { if (sel.value) applyCfg(sel.value); };      // charger une configuration = charger ses favoris
   }
   /* ---- petite fenêtre (avant-plan, fond flouté) ---- */
   let modal = null, delConfirm = null;
@@ -1751,14 +1783,14 @@
   function openSimModal(view, id, restore, opts) {
     closeSimModal(); simBackHide(); simRepl = null;      // ouvrir l'aperçu ne met pas Calculs détaillés en mode édition (seul « Mode édition » ou le lancement d'une modification le fait)
          // retour dans la fenêtre : le remplacement est terminé (ou abandonné : une ligne jaune déjà choisie reste une ligne jaune ordinaire)
-    const ov = document.createElement('div'); ov.id = 'simModal'; ov.innerHTML = '<div class="smCfgTitle"><div class="smCfgHead"><span class="smCfgNm"></span><span class="smCfgIco simRedIcon dep" hidden aria-hidden="true"></span></div><span class="smDefLink" role="button" tabindex="0" data-a="defcfg" hidden>Revenir aux paramètres par défaut</span></div><div class="smWin"></div>'; document.body.append(ov);
+    const ov = document.createElement('div'); ov.id = 'simModal'; ov.innerHTML = '<div class="smCfgTitle"><div class="smCfgHead"><span class="smCfgNm"></span></div><span class="smDefLink" role="button" tabindex="0" data-a="defcfg" hidden>Revenir aux paramètres par défaut</span></div><div class="smWin"></div>'; document.body.append(ov);
     ov.addEventListener('pointerdown', e => { if (e.target === ov) smGoEdit(); });
     ov.addEventListener('pointerdown', e => { const g = e.target.closest && e.target.closest('.smGrip'); if (g && modal && modal.view === 'edit') smDragStart(e, g); });      // poignée à gauche d'une ligne : glisser pour la déplacer
     ov.addEventListener('click', simModalClick); ov.addEventListener('input', simModalInput);
     ov.addEventListener('focusin', e => {      // un appui dans la case « nom » d'une ligne la sélectionne aussi : le visuel apparaît sur le côté (sans redessiner la liste, pour ne pas perdre le curseur)
       const t = e.target; if (!modal || modal.view !== 'edit' || !t.dataset || t.dataset.f !== 'item') return;
       const i = +t.dataset.i; if (modal.sel === i) return;
-      modal.sel = i; modal.selProbe = false; ov.querySelectorAll('.smList .smRow').forEach(r => r.classList.remove('sel')); { const rr = ov.querySelectorAll('.smList .smRow:not(.smProbeRow)')[i]; if (rr) rr.classList.add('sel'); } { const sp = ov.querySelector('.smNavBar span'); if (sp) { sp.textContent = smNavText(); sp.className = smNavCls(); } }
+      modal.sel = i; ov.querySelectorAll('.smList .smRow').forEach(r => r.classList.remove('sel')); { const rr = ov.querySelectorAll('.smList .smRow')[i]; if (rr) rr.classList.add('sel'); } { const sp = ov.querySelector('.smNavBar span'); if (sp) { sp.textContent = smNavText(); sp.className = smNavCls(); } }
       smSyncView(); smKeepHalf();
     });
     ov.addEventListener('focusout', e => { if (e.target.classList && e.target.classList.contains('smCfgIn')) cfgRenameEnd(); });
@@ -1766,16 +1798,14 @@
       if (e.target.classList && e.target.classList.contains('smCfgIn')) { if (e.key === 'Enter') { e.preventDefault(); cfgRenameEnd(); } else if (e.key === 'Escape') { e.stopPropagation(); cfgRenameEnd(true); } return; }
       if (e.key === 'Escape') smGoEdit(); else if (e.key === 'Enter' && e.target.closest('.smWin input') && modal && modal.view === 'edit') { const sb = ov.querySelector('button[data-a=save]'); if (sb) simModalClick({ target: sb }); else e.target.blur(); } });
     if (restore) modal = restore; else modal = { view, id: id || null };
-    if (opts) Object.assign(modal, opts);      // opts.selFor : aperçu des favoris en mode sélectif pour la configuration en cours d'édition
+    if (opts) Object.assign(modal, opts);
     modal.hist = modal.hist || []; modal.fut = modal.fut || [];
     if (!restore && view === 'edit') {
       const c = id ? cfgOf(id) : null; modal.name = c ? c.name : ''; modal.dup = '';
       if (c && c.id === simCfg.current) { modal.items = fromCurrent().map(i => ({ ...i })); modal.base = smBaseOfCfg(c); }      // config active : la fenêtre montre exactement ce qui est coché dans Calculs détaillés (même non enregistré) ; « Valider » apparaît tant que cela diffère de la config enregistrée
       else modal.items = c ? c.items.map(i => ({ ...i })) : [];
-      modal.selProbe = id === 'fav' && !!simProbe;      // sous « Favoris » : l'affichage se positionne d'abord sur le favori par défaut (1/x)
       modal.sel = modal.items.length ? 0 : null;      // à l'ouverture : 1re ligne choisie, donc fenêtre de gauche + graphique(s) de sa valeur ; config vide : seulement la fenêtre principale
     }      // nouvelle config : liste vide (on repart de zéro) ; la liste déroulante permet de dupliquer une config existante
-    if (modal.selFor && !modal.selSet) modal.selSet = new Set([...modal.items.map(i => i.sk), simProbe && simProbe.sk].filter(k => k && sim.checks.includes(k)));      // cochés au départ : les favoris déjà dans la config
     if (!modal.base && modal.view === 'edit') modal.base = smBaseOf();      // état à l'ouverture : sert à savoir s'il y a quelque chose à valider
     drawSimModal();
   }
@@ -1787,7 +1817,7 @@
       if (modal.renaming) return `<div class="smCfgOpt on${ld(c.id)}"><input class="smCfgIn" data-f="name" maxlength="30" value="${esc(modal.name)}" aria-label="Nom de la configuration" placeholder="nom de la configuration"></div>`;
       return `<div class="smCfgOpt on${ld(c.id)}" role="button" tabindex="0" data-a="cfgpick" data-id="${esc(c.id)}"><span>${esc(nm)}</span>${lockedCfg(c.id) ? '' : `<i class="smCfgEd" role="button" tabindex="0" data-a="cfgren" aria-label="Modifier le nom">${ic('edit')}</i>`}</div>`;      // stylo : modifier le nom de la configuration affichée
     };
-    return `<div class="smCfgDd"><button type="button" class="smCfgBtn${ld(modal.id)}" data-a="cfgmenu" aria-label="Changer de configuration"><span>changer de configuration</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><div class="smCfgList"${modal.menuOpen ? '' : ' hidden'}><div class="smCfgScroll">${simCfg.cfgs.map(opt).join('')}</div><div class="smCfgSep"></div>${opt(simFavCfg)}</div></div>`;      // « Favoris » reste toujours visible en bas, hors de la zone qui défile
+    return `<div class="smCfgDd"><button type="button" class="smCfgBtn${ld(modal.id)}" data-a="cfgmenu" aria-label="Changer de configuration"><span>changer de configuration</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><div class="smCfgList"${modal.menuOpen ? '' : ' hidden'}><div class="smCfgScroll">${simCfg.cfgs.map(opt).join('')}</div></div></div>`;
   }
   function cfgMenuRefresh(focus) {      // redessine le menu seul (le reste de la fenêtre, boutons compris, n'est pas touché)
     const dd = document.querySelector('#simModal .smCfgDd'); if (!dd || !modal) return;
@@ -1799,36 +1829,28 @@
     modal.renaming = false; if (cancel || !(modal.name || '').trim()) modal.name = modal.nameBefore;
     cfgMenuRefresh(); smUpdateSave();
   }
-  const smOff = () => modal && modal.id === 'fav' && simProbe ? 1 : 0;      // sous « Favoris », le favori par défaut est la valeur n° 1 (1/x) : les autres favoris suivent
-  const smNavCls = () => modal.selProbe ? 'cb' : modal.id === 'fav' ? 'cl' : modal.sel != null && modal.sel < sim.FIRST ? 'cg' : 'cy';      // couleur de la ligne choisie : vert (3 premières) ou jaune
-  function smNavText() { return (modal.selProbe ? 1 : modal.sel == null ? '–' : modal.sel + 1 + smOff()) + '/' + (modal.items.length + smOff()); }
+  const smNavCls = () => modal.sel != null && modal.sel < sim.FIRST ? 'cg' : 'cy';      // couleur du favori choisi : vert (3 premiers) ou jaune
+  function smNavText() { return (modal.sel == null ? '–' : modal.sel + 1) + '/' + modal.items.length; }
   function smNavHtml() {      // flèches ↑ ↓ et « 1/5 » + annuler / rétablir (seulement après une modification) : au-dessus des lignes, sous le menu déroulant des configurations (fenêtre de gauche)
-    const n = modal.items.length + smOff(); if (!n && !modal.hist.length && !modal.fut.length) return '';
+    const n = modal.items.length; if (!n && !modal.hist.length && !modal.fut.length) return '';
     const ar = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
     return `<div class="smNavBar"><button type="button" data-a="pv" data-d="-1" title="Valeur précédente" aria-label="Valeur précédente"${n > 1 ? '' : ' disabled'}>${ar('M6 15l6-6 6 6')}</button><span class="${smNavCls()}">${smNavText()}</span><button type="button" data-a="pv" data-d="1" title="Valeur suivante" aria-label="Valeur suivante"${n > 1 ? '' : ' disabled'}>${ar('M6 9l6 6 6-6')}</button><span class="smHist"></span></div>`;
   }
   function drawSimModal() {
     const w = document.querySelector('#simModal .smWin'); if (!w || !modal) return;
-    if (modal.selProbe && !(modal.id === 'fav' && simProbe)) modal.selProbe = false;      // le favori par défaut n'existe plus (ou autre config) : plus sélectionné
     if (modal.view === 'edit') { const n = modal.items.length; modal.sel = n ? (modal.sel == null || modal.sel >= n ? 0 : modal.sel) : null; }      // l'aperçu est toujours entier (fenêtre des valeurs + graphiques) : une ligne est toujours choisie, sauf config vide
     const oldList = w.querySelector('.smList'), keepTop = oldList ? oldList.scrollTop : 0;      // le redessin ne ramène pas la liste en haut
     const btn = (a, ico, title, extra = '', cls = '') => `<button class="smIc ${cls}" data-a="${a}" ${extra} title="${title}" aria-label="${title}">${ic(ico)}</button>`;
     if (modal.view === 'manage') {
       w.innerHTML = `<h4>Configurations</h4><div class="smList">${simCfg.cfgs.map(c => `<div class="smRow"><span class="smNm">${esc(c.name)}<small>${c.items.length} valeur${c.items.length > 1 ? 's' : ''}</small></span>${btn('edit', 'edit', 'Modifier', `data-id="${esc(c.id)}"`)}${FIXED.includes(c.id) ? '' : btn('del', delConfirm === c.id ? 'ok' : 'del', delConfirm === c.id ? 'Confirmer la suppression' : 'Supprimer', `data-id="${esc(c.id)}"`, delConfirm === c.id ? 'danger' : '')}</div>`).join('') || '<p class="smEmpty">Aucune configuration.</p>'}</div><div class="smFoot">${btn('new', 'add', 'Ajouter une config')}${btn('close', 'x', 'Fermer')}</div>`;
     } else {
-      const sm = !!modal.selFor, ckHtml = key => `<span class="smCk${modal.selSet.has(key === 'probe' ? simProbe.sk : modal.items[key].sk) ? ' on' : ''}" role="checkbox" aria-checked="${modal.selSet.has(key === 'probe' ? simProbe.sk : modal.items[key].sk)}" data-a="${key === 'probe' ? 'selprobe' : 'selck'}" data-i="${key}"></span>`;      // mode sélectif : cases à cocher à gauche des favoris
-      w.innerHTML = `<div class="smTop"><div class="smTitle"${sm ? ' hidden' : ''}><h4>${modal.id ? 'Aperçu des configurations' : 'Nouvelle configuration'}</h4>${sm ? '' : modal.id ? `<button type="button" class="smDisk" data-a="savedisk" aria-label="Sauvegarder les changements">${ic('disk')}</button>` : `<button type="button" class="smIc smX" data-a="close" aria-label="Fermer" title="Fermer">${ic('x')}</button>`}</div>${sm ? `<div class="smSelMsg">sélectionnez des favoris pour <span class="dwName">${esc((cfgOf(modal.selFor) || {}).name || '')}</span></div>` : modal.id ? cfgMenuHtml() : `<input class="smName" data-f="name" placeholder="nom de la configuration" maxlength="30" value="${esc(modal.name)}">`}${modal.id ? '' : `<select class="smDup" data-f="dup" aria-label="Dupliquer une configuration existante"><option value="">Nouvelle configuration vide</option>${simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${modal.dup === c.id ? ' selected' : ''}>Dupliquer : ${esc(c.name)} (${c.items.length})</option>`).join('')}</select>`}</div>${smNavHtml()}<div class="smList">${modal.id === 'fav' ? `<div class="smRow smProbeRow${modal.selProbe ? ' sel' : ''}" role="button" tabindex="0" data-a="pickprobe" title="Favori par défaut : voir son graphique">${sm ? ckHtml('probe') : ''}<span class="smPrbNo">N°1</span><span class="smPrbTxt">${simProbe ? `<em>${esc(simProbe.snap.name)}</em> : <b>${simProbe.snap.val}</b>` : 'favori par défaut : aucun paramètre choisi'}</span>${sm ? '' : '<span class="smPrbMod" role="button" tabindex="0" data-a="modprobe" title="Choisir un autre paramètre comme favori par défaut">modifier</span>'}</div>` : ''}${modal.items.map((it, i) => `${i === sim.FIRST && modal.id !== 'fav' ? '<div class="smSep" aria-hidden="true"></div>' : ''}<div class="smRow${modal.sel === i && !modal.selProbe ? ' sel' : ''}${modal.id && modal.id === simCfg.current && !sim.checks.includes(it.sk) ? ' miss' : ''}"${modal.id && modal.id === simCfg.current && !sim.checks.includes(it.sk) ? ' title="Cette valeur n’est pas active dans Calculs détaillés (décochée, ou introuvable dans le calcul actuel) : elle n’est pas comptée là-bas"' : ''}>${sm ? ckHtml(i) : `<span class="smGrip" data-g="${i}" role="button" tabindex="0" aria-label="Déplacer la ligne (glisser, ou flèches haut / bas)" title="Glisser pour changer l’ordre">${ic('grip')}</span>`}<span class="smLbl ${modal.id === 'fav' ? 'cl' : i < sim.FIRST ? 'cg' : 'cy'}" role="button" tabindex="0" data-a="pick" data-i="${i}" title="Voir où se trouve cette valeur">${esc(it.label)}</span>${simProbe && it.sk === simProbe.sk ? '<span class="smPrbNo mark" title="Favori n°1" aria-label="Favori n°1">N°1</span>' : modal.id !== 'fav' && simFavCfg.items.some(f => f.sk === it.sk) ? '<span class="smFavMark" title="Favori" aria-label="Favori"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 17l-5.2 2.7 1-5.9-4.3-4.1 5.9-.8z"/></svg></span>' : ''}${sm ? '' : `<input class="${modal.id === 'fav' ? 'cl' : i < sim.FIRST ? 'cg' : 'cy'}" data-f="item" data-i="${i}" placeholder="nom (facultatif)" maxlength="40" value="${esc(it.name)}">${btn('rm', 'x', 'Retirer cette valeur', `data-i="${i}"`)}`}</div>`).join('') || ''}${modal.id && !sm ? `<div class="smAddRow${modal.items.length ? '' : ' blink'}" role="button" tabindex="0" data-a="addrow" title="Ajouter une valeur : ouvre Calculs détaillés (un bouton permettra de revenir ici)" aria-label="Ajouter une valeur">${ic('add')}</div>` : ''}</div><div class="smBar">${smBarInner()}</div>`;
+      w.innerHTML = `<div class="smTop"><div class="smTitle"><h4>${modal.id ? 'Aperçu des configurations' : 'Nouvelle configuration'}</h4>${modal.id ? `<button type="button" class="smDisk" data-a="savedisk" aria-label="Sauvegarder les changements">${ic('disk')}</button>` : `<button type="button" class="smIc smX" data-a="close" aria-label="Fermer" title="Fermer">${ic('x')}</button>`}</div>${modal.id ? cfgMenuHtml() : `<input class="smName" data-f="name" placeholder="nom de la configuration" maxlength="30" value="${esc(modal.name)}">`}${modal.id ? '' : `<select class="smDup" data-f="dup" aria-label="Dupliquer une configuration existante"><option value="">Nouvelle configuration vide</option>${simCfg.cfgs.map(c => `<option value="${esc(c.id)}"${modal.dup === c.id ? ' selected' : ''}>Dupliquer : ${esc(c.name)} (${c.items.length})</option>`).join('')}</select>`}</div>${smNavHtml()}<div class="smList">${modal.items.map((it, i) => `${i === sim.FIRST ? '<div class="smSep" aria-hidden="true"></div>' : ''}<div class="smRow${modal.sel === i ? ' sel' : ''}${modal.id && modal.id === simCfg.current && !sim.checks.includes(it.sk) ? ' miss' : ''}"${modal.id && modal.id === simCfg.current && !sim.checks.includes(it.sk) ? ' title="Ce favori n’est pas actif dans Calculs détaillés (décoché, ou introuvable dans le calcul actuel) : il n’est pas compté là-bas"' : ''}><span class="smGrip" data-g="${i}" role="button" tabindex="0" aria-label="Déplacer la ligne (glisser, ou flèches haut / bas)" title="Glisser pour changer l’ordre">${ic('grip')}</span><span class="smLbl ${i < sim.FIRST ? 'cg' : 'cy'}" role="button" tabindex="0" data-a="pick" data-i="${i}" title="Voir où se trouve ce favori">${esc(it.label)}</span><input class="${i < sim.FIRST ? 'cg' : 'cy'}" data-f="item" data-i="${i}" placeholder="nom (facultatif)" maxlength="40" value="${esc(it.name)}">${btn('rm', 'x', 'Retirer ce favori', `data-i="${i}"`)}</div>`).join('')}${modal.id ? `<div class="smAddRow${modal.items.length ? '' : ' blink'}" role="button" tabindex="0" data-a="addrow" title="Ajouter un favori : ouvre Calculs détaillés (un bouton permettra de revenir ici)" aria-label="Ajouter un favori">${ic('add')}</div>` : ''}</div><div class="smBar">${smBarInner()}</div>`;
     }
-    { const t = document.querySelector('#simModal .smCfgNm'); { const ic2 = document.querySelector('#simModal .smCfgIco'); if (ic2) ic2.hidden = !(modal.view === 'edit' && modal.id === 'fav'); } if (t) { if (modal.selFor) t.innerHTML = 'Favoris pour la config <span class="smCfgFor">' + esc((cfgOf(modal.selFor) || {}).name || '') + '</span>'; else t.textContent = modal.view === 'edit' && modal.id ? ((modal.name || '').trim() || (cfgOf(modal.id) || {}).name || '') : ''; const hd = t.closest('.smCfgHead'); if (hd) hd.classList.toggle('rev', !!modal.selFor); } }      // aperçu sélectif : « Favoris pour la config XXX », étoiles à gauche      // nom de la config en cours : seul, au-dessus des fenêtres
-    w.classList.toggle('smSelMode', !!modal.selFor);
+    { const t = document.querySelector('#simModal .smCfgNm'); if (t) t.textContent = modal.view === 'edit' && modal.id ? ((modal.name || '').trim() || (cfgOf(modal.id) || {}).name || '') : ''; }      // nom de la configuration affichée, en titre
     const newList = w.querySelector('.smList'); if (newList) { newList.scrollTop = keepTop; if (modal.view === 'edit' && modal.sel != null && modal.keepHalf) smKeepHalf(); }
     modal.keepHalf = false;
-    if (modal.flashProbe && modal.view === 'edit') {      // retour après le choix d'un nouveau favori par défaut : sa ligne clignote (bleu)
-      const pr = w.querySelector('.smProbeRow'); modal.flashProbe = false;
-      if (pr) { pr.style.setProperty('--fc', '#1552eb'); pr.style.setProperty('--fcd', 'rgba(21,82,235,.15)'); pr.classList.add('flashV'); setTimeout(() => pr.classList.remove('flashV'), 2700); }
-    }
     if (modal.flashSk && modal.view === 'edit') {      // retour après une modification validée : la ligne modifiée est entourée de vert, le vert s'efface en fondu (1,5 s)
-      const j = modal.items.findIndex(i => i.sk === modal.flashSk), rw = w.querySelectorAll('.smList .smRow:not(.smProbeRow)')[j], fv = modal.flashV; modal.flashSk = null; modal.flashV = false;
+      const j = modal.items.findIndex(i => i.sk === modal.flashSk), rw = w.querySelectorAll('.smList .smRow')[j], fv = modal.flashV; modal.flashSk = null; modal.flashV = false;
       if (rw && fv) { const g = j < sim.FIRST; rw.style.setProperty('--fc', g ? '#14c408' : '#ebce15'); rw.style.setProperty('--fcd', g ? 'rgba(20,196,8,.12)' : 'rgba(235,206,21,.12)'); rw.classList.add('flashV'); rw.scrollIntoView({ block: 'nearest' }); setTimeout(() => rw.classList.remove('flashV'), 2700); }      // ligne ajoutée : contour vert (3 premières) ou jaune, 5 clignotements rapides puis disparition en 1 s
       else if (rw) { rw.classList.add('flash'); rw.scrollIntoView({ block: 'nearest' }); setTimeout(() => rw.classList.remove('flash'), 1700); }
     }
@@ -1837,7 +1859,7 @@
     smUpdateHist();
   }
   function smSyncView() {      // ligne choisie (clic sur son texte bleu ou dans sa case de nom) : la fenêtre passe à gauche, le visuel apparaît à droite
-    const ov = $('simModal'), it = modal && modal.view === 'edit' && modal.selProbe && simProbe ? { sk: simProbe.sk, label: simProbe.snap.name, name: simProbe.custom || '', probe: true } : modal && modal.view === 'edit' && modal.sel != null ? modal.items[modal.sel] : null;
+    const ov = $('simModal'), it = modal && modal.view === 'edit' && modal.sel != null ? modal.items[modal.sel] : null;
     if (!ov) return;
     const show = !!modal && modal.view === 'edit' && (!!it || (!!modal.id && !modal.items.length));      // le volet de droite : graphiques de la ligne choisie ; config vide : message d'accueil
     ov.classList.toggle('withView', show);
@@ -1845,7 +1867,7 @@
     if (!show) { if (pane) pane.remove(); if (side) side.remove(); return; }
     if (!pane) { pane = document.createElement('div'); pane.className = 'smView'; ov.append(pane); }
     if (!it) { if (side) side.remove(); simPreview(pane, null); return; }      // config vide : pas de flèches
-    { const n = modal.items.length + smOff(), ar = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;      // flèches ↑ ↓ à droite des graphiques (une au-dessus de l'autre, sans le numéro)
+    { const n = modal.items.length, ar = d => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;      // flèches ↑ ↓ à droite des graphiques (une au-dessus de l'autre, sans le numéro)
       if (!side) { side = document.createElement('div'); side.className = 'smSide'; side.innerHTML = `<button type="button" data-a="pv" data-d="-1" title="Valeur précédente" aria-label="Valeur précédente">${ar('M6 15l6-6 6 6')}</button><button type="button" data-a="pv" data-d="1" title="Valeur suivante" aria-label="Valeur suivante">${ar('M6 9l6 6 6-6')}</button>`; ov.append(side); }
       side.querySelectorAll('button').forEach(b => { b.disabled = n < 2; }); }
     simPreview(pane, it);
@@ -1883,8 +1905,8 @@
     let T = buildDetails(r)[t]; if (!T) return false;
     let i = T.rows.findIndex(x => x.sk === k);
     if (i < 0 && t === 'vpe') { vpe.flt = ['', '']; T = buildDetails(r)[t]; i = T.rows.findIndex(x => x.sk === k); }      // ligne cachée par un filtre : on le lève
-    if (i < 0 && t === 'vpe') {      // la ligne appartient à d'autres points que ceux de VP à écran : on reprend les points mémorisés avec elle (favori n°1, valeur d'une config…)
-      const o = sim.snap[k] || (simProbe && simProbe.sk === k ? simProbe.snap : null);
+    if (i < 0 && t === 'vpe') {      // la ligne appartient à d'autres points que ceux de VP à écran : on reprend les points mémorisés avec elle (favori d'une config…)
+      const o = sim.snap[k];
       if (o && o.pts) { vpe.pts = o.pts.slice(); vpe.custom = (o.cust || []).map(c => ({ ...c, p: c.p.slice() })); vpe.flt = ['', '']; vpe.full = !!o.x; T = buildDetails(r)[t]; i = T.rows.findIndex(x => x.sk === k); }
     }
     if (i < 0) return false;
@@ -1903,7 +1925,7 @@
   function smDragStart(e, g) {
     const list = document.querySelector('#simModal .smList'); if (!list || (e.button != null && e.button > 0)) return;
     e.preventDefault();
-    const rows = [...list.querySelectorAll('.smRow:not(.smProbeRow)')], from = +g.dataset.g, row = rows[from]; if (!row) return;
+    const rows = [...list.querySelectorAll('.smRow')], from = +g.dataset.g, row = rows[from]; if (!row) return;
     const rects = rows.map(r => r.getBoundingClientRect()), step = rects[from].height + 6, y0 = e.clientY, sc0 = list.scrollTop;
     let dy = 0, to = from, lastY = y0, timer = 0;
     row.classList.add('dragging'); rows.forEach((r, k) => { if (k !== from) r.classList.add('shift'); });
@@ -1943,14 +1965,14 @@
   let simSwap = null;      // sélection de points de VP à écran mise de côté pendant l'aperçu d'une ligne qui a ses propres points
   function simPreview0(pane, it) { try { simPreview0b(pane, it); } finally { if (simSwap) { Object.assign(vpe, simSwap); simSwap = null; } } }
   function simPreview0b(pane, it) {
-    const foot = go => `<div class="smPaneFoot">${go && !modal.selFor ? `<button type="button" class="hbtn smGo" data-a="${it.probe ? 'modprobe' : 'goto'}" title="${it.probe ? 'Choisir un autre paramètre comme favori par défaut' : 'Aller à cette valeur dans Calculs détaillés (un bouton permettra de revenir ici)'}">Modifier ce paramètre</button>` : ''}</div>`;
-    const nm = `<div class="smSelNm ${it.probe ? 'cb' : modal.id === 'fav' ? 'cl' : modal.sel < sim.FIRST ? 'cg' : 'cy'}">${esc((it.name || '').trim() || it.label)}</div>`;      // le nom donné à la valeur, sinon le texte bleu
+    const foot = go => `<div class="smPaneFoot">${go ? `<button type="button" class="hbtn smGo" data-a="goto" title="Aller à ce favori dans Calculs détaillés (un bouton permettra de revenir ici)">Modifier ce paramètre</button>` : ''}</div>`;
+    const nm = `<div class="smSelNm ${modal.sel < sim.FIRST ? 'cg' : 'cy'}">${esc((it.name || '').trim() || it.label)}</div>`;      // le nom donné au favori, sinon le texte bleu
     const msg = t => { pane.className = 'smView'; pane.innerHTML = nm + `<div class="smFig smNone">${t}</div>` + foot(false); };
     const r = lastR && lastR.valid ? lastR : G.compute(vpOf(), S);
     if (!r || !r.valid) return msg('Faisceau hors écran : aucun visuel.');
     let tabs = buildDetails(r); const t = String(it.sk).split('|')[0]; let T = tabs[t], rw = T && T.rows.find(x => x.sk === it.sk);
-    if (!rw && t === 'vpe') {      // la ligne appartient à d'autres points que ceux de VP à écran (favori n°1, valeur d'une config…) : calcul refait avec les points mémorisés, la sélection actuelle est rendue après
-      const sn = it.probe ? simProbe.snap : sim.snap[it.sk] || ((simFavCfg.items.find(i => i.sk === it.sk) || {}).snap) || ((cfgOf(simCfg.current) || { items: [] }).items.find(i => i.sk === it.sk) || {}).snap;
+    if (!rw && t === 'vpe') {      // la ligne appartient à d'autres points que ceux de VP à écran (favori d'une config…) : calcul refait avec les points mémorisés, la sélection actuelle est rendue après
+      const sn = sim.snap[it.sk] || it.snap || ((cfgOf(simCfg.current) || { items: [] }).items.find(i => i.sk === it.sk) || {}).snap;
       if (sn && sn.pts) {
         simSwap = { pts: vpe.pts, custom: vpe.custom, flt: vpe.flt, full: vpe.full, short: vpe.short, focus: vpe.focus, editing: vpe.editing, lastSig: vpe.lastSig, blink: vpe.blink };
         Object.assign(vpe, { pts: sn.pts.slice(), custom: (sn.cust || []).map(c => ({ ...c, p: c.p.slice() })), flt: ['', ''], full: !!sn.x, short: false, focus: null, editing: null });
@@ -1975,7 +1997,7 @@
   const smBaseOf = () => JSON.stringify({ n: (modal.name || '').trim(), i: modal.items.map(i => i.sk + '\u0001' + (i.name || '').trim()) });
   const smBaseOfCfg = c => JSON.stringify({ n: (c.name || '').trim(), i: c.items.map(i => i.sk + '\u0001' + (i.name || '').trim()) });
   /* Bandeau figé en bas de la fenêtre de l'aperçu : « fenêtre d'édition » (quitter l'aperçu passe toujours par le mode édition, où les changements se valident) ; « créer la configuration » en plus pour une nouvelle config */
-  const smBarInner = () => modal && modal.selFor ? '<button type="button" class="hbtn primary smBarOk" data-a="selvalid">valider la sélection</button>' : modal && !modal.id ? '<button type="button" class="hbtn primary smBarNew" data-a="save" title="Créer la configuration et ouvrir son aperçu">créer</button>' : '<button type="button" class="hbtn primary smBarEd" data-a="edmode" title="' + (smLeaveDirty() ? 'Aller dans Calculs détaillés en mode édition : c\'est là que se valident les changements' : 'Revenir à Calculs détaillés') + '">' + (smLeaveDirty() ? 'fenêtre d\'édition' : 'quitter') + '</button>';      // nouvelle config : « créer » ; aperçu : quitter passe toujours par le mode édition
+  const smBarInner = () => modal && !modal.id ? '<button type="button" class="hbtn primary smBarNew" data-a="save" title="Créer la configuration et ouvrir son aperçu">créer</button>' : '<button type="button" class="hbtn primary smBarEd" data-a="edmode" title="' + (smLeaveDirty() ? 'Aller dans Calculs détaillés en mode édition : c\'est là que se valident les changements' : 'Revenir à Calculs détaillés') + '">' + (smLeaveDirty() ? 'fenêtre d\'édition' : 'quitter') + '</button>';      // nouvelle config : « créer » ; aperçu : quitter passe toujours par le mode édition
   const smPanelDirty = () => !!modal && modal.view === 'edit' && smBaseOf() !== modal.base;      // noms, lignes, ordre, nom de la config différents de ce qui est enregistré
   const cfgIsDefault = c => JSON.stringify(c.items.map(i => [i.sk, i.name || ''])) === JSON.stringify(defaultCfg(c.id).map(i => [i.sk, i.name || '']));      // config A, B, C : identique à son réglage par défaut ?
   function smUpdateDef() {      // « Revenir aux paramètres par défaut » : config A, B ou C seulement, et seulement si une modification a été appliquée
@@ -1999,7 +2021,6 @@
       c.name = fixedName(c) || (nm || c.name); c.items = items;
       if (live) { sim.checks = items.map(i => i.sk); sim.names = {}; items.forEach(i => { if (i.name) sim.names[i.sk] = i.name; if (i.snap) sim.snap[i.sk] = i.snap; }); simAcc.clear(); simDel.clear(); }
       modal.items = items.map(i => ({ ...i })); modal.sel = modal.sel != null && modal.sel < modal.items.length ? modal.sel : (modal.items.length ? 0 : null);
-      if (c.id === 'fav') simFavSaved = JSON.stringify(simFavCfg.items);
       modal.base = smBaseOf(); drawSimModal(); simChanged();
     };
     if (FIXED.includes(c.id)) warnDefault(run); else run();
@@ -2026,13 +2047,6 @@
     smUpdateSave();
   }
   function simModalClick(e) {
-    if (modal && modal.selFor && !(e.target.closest && e.target.closest('.smCk'))) {      // mode sélectif : un clic n'importe où sur la ligne la met en surbrillance (et affiche son graphique) sans cocher ; seule la case coche
-      const row = e.target.closest && e.target.closest('.smList .smRow');
-      if (row) {
-        if (row.classList.contains('smProbeRow')) modal.selProbe = true; else { modal.sel = [...row.parentNode.querySelectorAll('.smRow:not(.smProbeRow)')].indexOf(row); modal.selProbe = false; }
-        drawSimModal(); return;
-      }
-    }
     const b = e.target.closest && e.target.closest('[data-a]'); if (!b || !modal) return;
     const a = b.dataset.a, id = b.dataset.id;
     if (a === 'close') simModalQuit();
@@ -2051,19 +2065,14 @@
     else if (a === 'addrow') { const st = smPark(); st.selSk = null; st.sel = null; st.add = true; simSetEdit(true); simOpenDetails(); simBackShow(st); }      // « + » : Calculs détaillés en mode édition ; dès qu'une valeur est cochée, retour automatique à l'aperçu      // « + » : on va dans Calculs détaillés pour cocher une ligne de plus
     else if (a === 'goto') { if (modal.sel != null) { const it = modal.items[modal.sel], st = smPark(); st.selSk = it.sk; st.add = false; simDel.clear(); simSetEdit(true); simRepl = { old: it.sk, nw: null, done: false }; if (simGoto(it.sk)) simBackShow(st); else { simRepl = null; openSimModal('edit', null, st); } } }      // la ligne à modifier passe en rouge dans Calculs détaillés
     else if (a === 'pv') {
-      const off = smOff(), total = modal.items.length + off, d = +b.dataset.d;
+      const total = modal.items.length, d = +b.dataset.d;
       if (b.closest('.smSide')) { b.classList.add('tap'); setTimeout(() => b.classList.remove('tap'), 280); }
       if (total > 1) {
-        const cur = modal.selProbe ? 0 : modal.sel == null ? -1 : modal.sel + off, nx = cur < 0 ? (d > 0 ? 0 : total - 1) : (cur + d + total) % total;
-        if (off && nx === 0) modal.selProbe = true; else { modal.selProbe = false; modal.sel = nx - off; }
+        const cur = modal.sel == null ? -1 : modal.sel; modal.sel = cur < 0 ? (d > 0 ? 0 : total - 1) : (cur + d + total) % total;
         modal.keepHalf = true; drawSimModal();
       }
     }
-    else if (a === 'selck' || a === 'selprobe') { const k = a === 'selprobe' ? simProbe.sk : modal.items[+b.dataset.i].sk; if (modal.selSet.has(k)) modal.selSet.delete(k); else modal.selSet.add(k); drawSimModal(); }      // case d'un favori (mode sélectif)
-    else if (a === 'selvalid') smSelValid();
-    else if (a === 'pickprobe') { modal.selProbe = true; drawSimModal(); }      // ligne du favori par défaut : son graphique s'affiche à droite
-    else if (a === 'modprobe') { const st = smPark(); st.add = false; st.selProbe = true; simBackShow(st); simPickStart(true); }      // « modifier » : Calculs détaillés en mode édition pour choisir un autre paramètre ; retour à l'aperçu à la validation
-    else if (a === 'pick') { modal.selProbe = false; modal.sel = +b.dataset.i; modal.keepHalf = true; drawSimModal(); }      // plus de désélection : les graphiques restent
+    else if (a === 'pick') { modal.sel = +b.dataset.i; modal.keepHalf = true; drawSimModal(); }      // plus de désélection : les graphiques restent
     else if (a === 'rm') {      // retirer une ligne : rien d'autre ne change ; le volet des graphiques reste (la ligne suivante, ou la dernière, est alors choisie si c'était la ligne retirée qui l'était)
       const i = +b.dataset.i, selIt = modal.sel != null ? modal.items[modal.sel] : null, gone = modal.items[i];
       smPush(); modal.items.splice(i, 1);
@@ -2134,8 +2143,6 @@
     box.onclick = e => {
       const b = e.target.closest('[data-a]'); if (!b) return; const a = b.dataset.a, id = b.dataset.id;
       if (a === 'io') { window.VPIO.open(cfgIoSpec()); return; }
-      if (a === 'favchg') { if (!simCfg.on) { simCfg.on = true; simChanged(); } simPickStart(false, true); return; }      // changer le favori n°1 : choix dans Calculs détaillés, retour ici à la validation
-      if (a === 'favdef') { warnDefault(() => { simProbe = defaultProbe(); if (simHl && simRedOpen) simHl = simProbe.sk; simSave(); simChanged(); }, null, 'Revenir au paramètre par défaut du favori n°1 : <span class="dwName">' + esc(DEFAULT_FAV1.name) + '</span> ?', ['annuler', 'revenir'], null, true); return; }
       if (a === 'default' && FIXED.includes(id)) {
         if (defArm.id === id) { clearTimeout(defArm.t); defArm = { id: '', t: 0 }; const c = cfgOf(id); c.name = 'Config ' + id; c.items = defaultCfg(id); if (simCfg.current === id) applyCfg(id); else simChanged(); }
         else { clearTimeout(defArm.t); defArm = { id, t: setTimeout(() => { defArm = { id: '', t: 0 }; renderSimSettings(); }, 4000) }; renderSimSettings(); }
@@ -2144,7 +2151,7 @@
       if (a === 'new') openSimModal('edit', null); else if (a === 'edit') openSimModal('edit', id);
       else if (a === 'del' && !FIXED.includes(id)) { if (delConfirm === id) { simCfg.cfgs = simCfg.cfgs.filter(c => c.id !== id); if (simCfg.current === id) simCfg.current = ''; delConfirm = null; simChanged(); } else { delConfirm = id; renderSimSettings(); } }
     };
-    box.innerHTML = `<h3>Configurations mémorisées</h3><p class="sub subS">sélection de lignes de calcul pour les simulations</p>${simCfg.cfgs.map(c => `<div class="smRow"><span class="smNm">${esc(c.name)}<small>${c.items.length} valeur${c.items.length > 1 ? 's' : ''}</small></span><button class="smIc" data-a="edit" data-id="${esc(c.id)}" title="Modifier" aria-label="Modifier">${ic('edit')}</button>${FIXED.includes(c.id) ? `<button class="smDef${defArm.id === c.id ? ' danger' : ''}" data-a="default" data-id="${esc(c.id)}" title="Revenir à la configuration par défaut">${defArm.id === c.id ? 'Confirmer' : 'Défaut'}</button>` : `<button class="smIc${delConfirm === c.id ? ' danger' : ''}" data-a="del" data-id="${esc(c.id)}" title="${delConfirm === c.id ? 'Confirmer la suppression' : 'Supprimer'}" aria-label="Supprimer">${ic(delConfirm === c.id ? 'ok' : 'del')}</button>`}</div>`).join('')}<div class="smFoot"><button class="smIc" data-a="new" title="Ajouter une config" aria-label="Ajouter une config">${ic('add')}</button></div><button class="hbtn ioBtn" data-a="io">Importer/Exporter un fichier</button><h3 style="margin-top:34px">Favori n°1</h3><p class="sub subS">paramètre par défaut des favoris (bouton à cercles) : jamais vide</p><div class="smRow"><span class="smNm">${esc(simProbe.snap.name)}<small>${simProbe.snap.val}</small></span><button class="smIc" data-a="favchg" title="Changer le favori n°1" aria-label="Changer le favori n°1">${ic('edit')}</button><button class="smDef" data-a="favdef" title="Revenir au paramètre par défaut du favori n°1">Défaut</button></div>`;
+    box.innerHTML = `<h3>Configurations mémorisées</h3><p class="sub subS">chaque configuration charge ses favoris (lignes de calcul) dans les simulations</p>${simCfg.cfgs.map(c => `<div class="smRow"><span class="smNm">${esc(c.name)}<small>${c.items.length} favori${c.items.length > 1 ? 's' : ''}</small></span><button class="smIc" data-a="edit" data-id="${esc(c.id)}" title="Modifier" aria-label="Modifier">${ic('edit')}</button>${FIXED.includes(c.id) ? `<button class="smDef${defArm.id === c.id ? ' danger' : ''}" data-a="default" data-id="${esc(c.id)}" title="Revenir à la configuration par défaut">${defArm.id === c.id ? 'Confirmer' : 'Défaut'}</button>` : `<button class="smIc${delConfirm === c.id ? ' danger' : ''}" data-a="del" data-id="${esc(c.id)}" title="${delConfirm === c.id ? 'Confirmer la suppression' : 'Supprimer'}" aria-label="Supprimer">${ic(delConfirm === c.id ? 'ok' : 'del')}</button>`}</div>`).join('')}<div class="smFoot"><button class="smIc" data-a="new" title="Ajouter une config" aria-label="Ajouter une config">${ic('add')}</button></div><button class="hbtn ioBtn" data-a="io">Importer/Exporter un fichier</button>`;
   }
   const dfl = { quad: { full: false, flt: ['', ''] }, scr: { full: false, flt: ['', ''] } };      // Faisceau, Écran : « calculs plus exhaustifs » et deux filtres propres à chaque onglet
   const fmtEdit = v => String(+v.toFixed(4)).replace('.', ',');                // coordonnée proposée à la modification
@@ -2153,18 +2160,16 @@
   const TRI = '#a855f7', TRI_FILL = 'rgba(168,85,247,.28)', SCREEN = '#ff5d5d', BEAM = '#4da3ff';
   /* affichage réglages : réglages en grand sur 2 colonnes, les 3 vues en petit sur une ligne au-dessus, bandeau d'indicateurs réduit */
   $('cfgBtn').onclick = () => {
-    backToCompact = false;
-    document.querySelectorAll('.viz .card.full').forEach(c => toggleFull(c, false));
+    if (window.WinZoom) WinZoom.close();
     const on = $('p-calc').classList.toggle('cfg'); $('cfgBtn').textContent = on ? 'Vue principale' : 'vue compacte';
     requestAnimationFrame(render);
   };
   $('detBtn').onclick = () => { $('details').classList.toggle('open'); $('detBtn').classList.toggle('on'); render(); };
   document.addEventListener('pointerdown', e => {      // un appui hors du panneau le referme ; isConnected : un bouton du panneau redessiné pendant l'appui (zoom, Fit) n'est plus dans la page, mais il appartenait bien au panneau
-    if ($('details').classList.contains('open') && e.target.isConnected && !e.target.closest('#details, #detBtn, #simModal, #defWarn')) simCloseDetails();
+    if ($('details').classList.contains('open') && e.target.isConnected && !e.target.closest('#details, #detBtn, #simModal, #defWarn, .pnlLayer, .wzBack, .wz')) simCloseDetails();
   });
-  $('detFull').onclick = () => { const f = $('details').classList.toggle('full'); $('detFull').textContent = f ? '⤡' : '⤢'; $('detFull').title = f ? 'Quitter le plein écran' : 'Plein écran'; renderDetails(G.compute(vpOf(), S)); };
   $('detBack').onclick = () => simBackEdit();      // « Retour » (mode édition) : à la place de « Fermer »
-  function simCloseDetails() {      // fermer Calculs détaillés : s'il y a des modifications non sauvegardées (mode édition, favoris), une question s'affiche (oui = sauvegarder, non = abandonner)
+  function simCloseDetails() {      // fermer Calculs détaillés : s'il y a des modifications non sauvegardées (mode édition), une question s'affiche (oui = sauvegarder, non = abandonner)
     const shut = () => { $('details').classList.remove('open'); $('detBtn').classList.remove('on'); };
     if (simEdit && simEditDirty()) { warnDefault(() => simSaveEdit(true, shut), () => simAbandonEdit(shut), 'Sauvegarder les modifications ?', ['non', 'oui'], () => { /* Échap : on reste dans la fenêtre */ }); return; }
     shut(); simEditCancel();
@@ -2591,13 +2596,13 @@
         if (Math.hypot(...u2) > 0.3 && Math.hypot(...v2) > 0.3) row.rt.push({ k: 'rt', c: c2, u: u2, v: v2, vw: vi, pi: m.pi });
       }));
       row.sk = skV(rw); rowsV.push(row);
-      { const sn = { hl: row.hl, rt: row.rt, hl3: row.hl3, rt3: row.rt3, t: row.t, val: row.val, x: !!rw.x, pts: vpe.pts.slice(), cust: vpe.custom.filter(c => vpe.pts.includes(c.id)).map(c => ({ ...c, p: c.p.slice() })) }; if (sim.checks.includes(row.sk)) sim.snap[row.sk] = { ...sim.snap[row.sk], ...sn }; if (simProbe && simProbe.sk === row.sk) simProbe.snap = { ...simProbe.snap, ...sn }; simFavCfg.items.forEach(fi => { if (fi.sk === row.sk) fi.snap = { ...fi.snap, ...sn }; }); }      // ligne cochée : son dessin est gardé avec sa valeur
+      { const sn = { hl: row.hl, rt: row.rt, hl3: row.hl3, rt3: row.rt3, t: row.t, val: row.val, x: !!rw.x, pts: vpe.pts.slice(), cust: vpe.custom.filter(c => vpe.pts.includes(c.id)).map(c => ({ ...c, p: c.p.slice() })) }; if (sim.checks.includes(row.sk)) sim.snap[row.sk] = { ...sim.snap[row.sk], ...sn }; }
     });
     /* Lignes conservées : recalculées en direct avec leurs propres points (mémorisés avec la ligne), même s'ils ne sont plus sélectionnés. Le calcul est refait une fois par jeu de points
        en remplaçant provisoirement la sélection ; il met à jour la copie (valeur, dessin) de chaque ligne cochée de ce jeu. */
     if (!vpeProbe) {
       const groups = new Map();
-      [...sim.checks, simProbe && simProbe.sk, ...simFavCfg.items.map(i => i.sk)].forEach(k => { if (!k) return; const o = sim.snap[k] || (simProbe && simProbe.sk === k ? simProbe.snap : null) || ((simFavCfg.items.find(i => i.sk === k) || {}).snap); if (k.startsWith('vpe|') && o && o.pts && !allV.some(rw => skV(rw) === k)) { const g = o.pts.join(','); const e = groups.get(g); if (!e) groups.set(g, { ...o, x: !!o.x }); else if (o.x) e.x = true; } });
+      sim.checks.forEach(k => { if (!k) return; const o = sim.snap[k]; if (k.startsWith('vpe|') && o && o.pts && !allV.some(rw => skV(rw) === k)) { const g = o.pts.join(','); const e = groups.get(g); if (!e) groups.set(g, { ...o, x: !!o.x }); else if (o.x) e.x = true; } });
       groups.forEach(o => {
         if (!o.pts.every(id => (o.cust || []).some(c => c.id === id) || cat(id))) return;               // un point du catalogue n'existe plus : on garde la dernière copie
         const save = { pts: vpe.pts, custom: vpe.custom, flt: vpe.flt, full: vpe.full, short: vpe.short, focus: vpe.focus, editing: vpe.editing, lastSig: vpe.lastSig, blink: vpe.blink };
@@ -2607,12 +2612,6 @@
       });
     }
     const keptV = sim.checks.filter(k => k.startsWith('vpe|') && sim.snap[k] && !allV.some(rw => skV(rw) === k));      // lignes cochées de calculs précédents (autres points) : maintenues dans la liste, valeur figée, effaçables seulement en les décochant
-    const favSnap = k => sim.snap[k] || (simProbe && simProbe.sk === k ? simProbe.snap : null) || ((simFavCfg.items.find(i => i.sk === k) || {}).snap) || null;
-    const keptF = [...new Set([simProbe && simProbe.sk, ...simFavCfg.items.map(i => i.sk)])].filter(k => k && k.startsWith('vpe|') && !sim.checks.includes(k) && favSnap(k) && !allV.some(rw => skV(rw) === k));      // favoris d'autres points (calibrés) : conservés dans la liste
-    if (keptF.length) {
-      rowsV.push({ sec: 'Favoris conservés' });
-      keptF.forEach(k => { const o = favSnap(k); rowsV.push({ ...L(o.name || k.split('|')[3] || k, o.f || '', o.val, o.hl || [], o.t), sk: k, kept: true, rt: o.rt || [], d: '' }); });
-    }
     if (keptV.length) {
       rowsV.push({ sec: 'Lignes cochées conservées' });
       keptV.forEach(k => { const o = sim.snap[k]; rowsV.push({ ...L(o.name, o.f || '', o.val, o.hl || [], o.t), sk: k, kept: true, rt: o.rt || [], d: '' });      }); /* cliquée, elle se dessine dans les vues comme une ligne ordinaire */
@@ -2733,33 +2732,27 @@
     const tabs = buildDetails(r), T = tabs[tab] || tabs.quad;
     renderSim(tabs); renderSimHead();
     tabsEl.querySelectorAll('button[data-t], .favBackTxt').forEach(x => x.remove());
-    const tabCol = {};      // contour des onglets : couleurs présentes (vert, jaune, bleu favoris), partagées en parts égales (1, 2 ou 3 couleurs)
+    const tabCol = {};      // contour des onglets : couleurs présentes (vert, jaune), partagées en parts égales
     if (simCfg.on) {
       const add = (k, c) => { const t = String(k).split('|')[0]; (tabCol[t] = tabCol[t] || new Set()).add(c); };
-      if (simCfg.current !== 'fav') sim.checks.forEach((k, i) => add(k, i < sim.FIRST ? '#2f8a2b' : '#c9b020'));
-      if (simCfg.current === 'fav') { simFavCfg.items.forEach(i => add(i.sk, '#4da3ff')); if (simProbe) add(simProbe.sk, '#4da3ff'); }      // points bleus : sous « Favoris » tous les favoris ; sinon seulement les lignes de la config qui sont des favoris
-      else sim.checks.forEach(k => { if (isFavRow(k)) add(k, '#4da3ff'); });
+      sim.checks.forEach((k, i) => add(k, i < sim.FIRST ? '#2f8a2b' : '#c9b020'));
     }
     const tabG = new Set(Object.keys(tabCol)), tabGrad = k => { const cs = ['#2f8a2b', '#c9b020', '#4da3ff'].filter(c => tabCol[k] && tabCol[k].has(c)), n = cs.length; return n ? `linear-gradient(90deg,${cs.map((c, i) => `${c} ${(100 * i / n).toFixed(2)}% ${(100 * (i + 1) / n).toFixed(2)}%`).join(',')})` : ''; };
     const tabY = new Set(), tabR = new Set();      // onglets qui contiennent des lignes jaunes (à ajouter) ou rouges (à supprimer / à remplacer) : leur contour se colore
     if (simCfg.on) { sim.checks.forEach(k => { if (simPending(k)) tabY.add(String(k).split('|')[0]); }); simDel.forEach(k => tabR.add(String(k).split('|')[0])); if (simRepl && !simRepl.done) tabR.add(String(simRepl.old).split('|')[0]); }
     tabsEl.append(...Object.entries(tabs).map(([k, t]) => {
       const x = document.createElement('button'); x.dataset.t = k; x.className = (k === tab ? 'on' : '') + (tabY.has(k) ? ' tY' : '') + (tabR.has(k) ? ' tR' : ''); x.textContent = t.label;
-      if (tabG.has(k)) { const dots = document.createElement('span'); dots.className = 'tdots'; ['#14c408', '#ebce15', '#4da3ff'].forEach((col, ci) => { if (tabCol[k].has(['#2f8a2b', '#c9b020', '#4da3ff'][ci])) { const d = document.createElement('i'); d.style.background = col; dots.append(d); } }); x.append(dots); }      // petits points sous le menu : vert / jaune (valeurs de la config), bleu (favoris)
+      if (tabG.has(k)) { const dots = document.createElement('span'); dots.className = 'tdots'; ['#14c408', '#ebce15', '#4da3ff'].forEach((col, ci) => { if (tabCol[k].has(['#2f8a2b', '#c9b020', '#4da3ff'][ci])) { const d = document.createElement('i'); d.style.background = col; dots.append(d); } }); x.append(dots); }      // petits points sous le menu : vert / jaune (favoris de la config)
       return x;
     }));
-    if (simFavOnly) { const fb = document.createElement('span'); fb.className = 'favBackTxt'; fb.setAttribute('role', 'button'); fb.textContent = 'revenir à la configuration'; tabsEl.append(fb); }      // favoris seuls affichés : texte clignotant sous la barre du haut, au niveau de l'étoile
     tabsEl.onclick = e => {
-      if (e.target.closest('.favBackTxt')) { simFavOnly = false; simNav = -1; renderDetails(G.compute(vpOf(), S)); return; }      // revenir à la configuration : l'étoile s'éteint
       const b = e.target.closest('button[data-t]'); if (b) {
-        if (b.dataset.t === tab) { const R = tabs[tab].rows, ok = R.map((x, i) => x.hl && x.hl.length && (!simFavOnly || isFavRow(x.sk)) ? i : -1).filter(i => i >= 0); selRow = ok[(ok.indexOf(selRow) + 1) % ok.length]; simTabMove = true; renderDetails(r); scrollToRow(selRow); return; }
+        if (b.dataset.t === tab) { const R = tabs[tab].rows, ok = R.map((x, i) => x.hl && x.hl.length ? i : -1).filter(i => i >= 0); selRow = ok[(ok.indexOf(selRow) + 1) % ok.length]; simTabMove = true; renderDetails(r); scrollToRow(selRow); return; }
         tab = b.dataset.t; selRow = 1; simTabMove = true; renderDetails(G.compute(vpOf(), S)); $('dbody').scrollTop = 0;
       }
     };
     const rows = T.rows;
-    const secHasFav = i => { for (let j = i + 1; j < rows.length && !rows[j].sec; j++) if (isFavRow(rows[j].sk)) return true; return false; };
-    const vis = (x, i) => !simFavOnly || (x.sec ? secHasFav(i) : isFavRow(x.sk));      // étoile active : seules les lignes favorites (et les titres de sections qui en ont) sont visibles
-    if (!rows[selRow] || rows[selRow].sec || !vis(rows[selRow], selRow)) selRow = rows.findIndex((x, i) => !x.sec && vis(x, i));
+    if (!rows[selRow] || rows[selRow].sec) selRow = rows.findIndex(x => !x.sec);
     if (simTabMove) { simTabMove = false; const ni = rows[selRow] ? simNavKeys().indexOf(rows[selRow].sk) : -1; if (ni >= 0) { simNav = ni; renderSimHead(); } }      // sur une ligne qui n'est pas dans la config, le x/x ne change pas
     const stepTab = tab === 'quad' || tab === 'scr';                   // Faisceau et Écran : deux boutons ronds verts centrés sous le graphique font défiler les lignes de calcul (↑ précédente, ↓ suivante)
     const arrows = stepTab || tab === 'vpe' || tab === 'px';                           // les boutons ↑ ↓ existent aussi dans VP à écran (sans les autres comportements propres à Faisceau / Écran)
@@ -2770,46 +2763,30 @@
     const nAdd = simCfg.on ? sim.checks.filter(k => simPending(k)).length : 0;      // boutons « tout ajouter » (lignes jaunes) et « tout supprimer » (lignes rouges) : présents seulement s'il y a au moins 2 lignes de la couleur (avec une seule, le bouton de la ligne suffit)
     const apBtn = arrows && !(simRepl && !simRepl.done) ? (nAdd > 1 ? '<button type="button" class="apBtn apAdd">tout ajouter</button>' : '') + (simDel.size > 1 ? '<button type="button" class="apBtn apDel">tout supprimer</button>' : '') : '';
     const repBar = arrows && simRepl ? (!simRepl.done ? '<span class="repMsgBar">sélectionnez une nouvelle valeur à calculer</span>' : simBackState ? '<span class="repBackBar"><button type="button" class="repEye" title="Revenir à l’aperçu des configurations" aria-label="Revenir à l’aperçu des configurations">' + ic('eye').replace('<svg', '<svg class="ic"') + '</button></span>' : '') : '';      // remplacement : message clignotant (sans boutons), puis flèche de retour au panneau (survol : « Revenir au panneau de configuration ») à côté des boutons « tout ajouter » / « tout supprimer »
-    const pickBar = arrows && simPick && !simPick.sk ? '<span class="pickMsgBar"><span class="pickCk"></span>sélectionnez un paramètre</span>' : '';      // choix d'un paramètre libre : message rouge clignotant, avec à sa gauche une case rouge qui alterne cochée / décochée
-    const favBack = '';      // favoris seuls affichés : bouton clignotant pour revenir à toutes les lignes
-    const legend = `<div class="tleg${arrows ? ' step' : ''}${tab === 'vpe' ? ' wide' : ''}"><span class="tlegG">${legItems}</span>${apBtn}${repBar}${pickBar}${favBack}${stepBtns}${legCount}</div>`;
+    const legend = `<div class="tleg${arrows ? ' step' : ''}${tab === 'vpe' ? ' wide' : ''}"><span class="tlegG">${legItems}</span>${apBtn}${repBar}${stepBtns}${legCount}</div>`;
     const dispHtml = kind => {                                         // VP à écran : zoom · déplacement · Fit, en haut à droite de chaque vue
       const D = dpv[kind], on = d => D.mode === d ? ' class="on"' : '', ar = '<span class="arws"><i></i><i></i><i></i><i></i></span>';
       return `<div class="dispSel dispTop dpv" data-v="${kind}"><div class="r2"><button data-d="zoom"${on('zoom')} aria-label="Zoom de l’affichage" title="Zoom : appuyer et glisser vers le haut (agrandir) ou le bas (reculer)"><svg class="ic" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.3 15.3 21 21M7.5 10.5h6M10.5 7.5v6"/></svg>${ar}</button><button data-d="pan"${on('pan')} aria-label="Déplacer l’affichage" title="Déplacement : appuyer et glisser pour voyager latéralement et verticalement"><svg class="ic" viewBox="0 0 24 24"><rect x="8" y="8" width="8" height="8" rx="1.5"/><path d="M12 1.5v4M10.3 3.2 12 1.5l1.7 1.7M12 22.5v-4M10.3 20.8 12 22.5l1.7-1.7M1.5 12h4M3.2 10.3 1.5 12l1.7 1.7M22.5 12h-4M20.8 10.3 22.5 12l-1.7 1.7"/></svg>${ar}</button><button data-d="auto"${on('auto')} aria-label="Cadrage automatique" title="Fit : cadre toute la vue">Fit</button></div></div>`;
     };
     const figsHtml = `<div class="figs">${T.views.map(v => tab === 'vpe' ? `<div class="vwin"><svg></svg>${dispHtml(v.t)}</div>` : '<svg></svg>').join('')}${legend}</div>`;
     const rpOf = x => !simRepl || !x.sk ? '' : simRepl.done ? (x.sk === simRepl.nw ? 'rep3' : '') : x.sk === simRepl.old ? 'rep' : x.sk === simRepl.nw ? 'rep2' : '';      // remplacement : rep (rouge, reste en place) · rep2 (jaune choisie) · rep3 (verte, remplacement fait)
-    const stOf = x => x.sk && simDel.has(x.sk) ? 'del' : simPick && simPick.sk && x.sk === simPick.sk ? 'pick' : rpOf(x) || (simCfg.on && x.sk && simPending(x.sk) ? 'rep2' : '');      // rouge / jaune (à valider) / vert (remplacement validé)
+    const stOf = x => x.sk && simDel.has(x.sk) ? 'del' : rpOf(x) || (simCfg.on && x.sk && simPending(x.sk) ? 'rep2' : '');      // rouge / jaune (à valider) / vert (remplacement validé)
     const vfOf = x => { const v = x.sk && simVal.get(x.sk), e = v ? performance.now() - v.t : 1500; return e < 1500 ? { ms: Math.round(e) + 1, c: v.c } : null; };      // ms écoulées depuis la validation (0 = plus de contour)
-    const p1fav = x => simCfg.current === 'fav' && !!simProbe && x.sk === simProbe.sk;      // sous « Favoris », le favori n°1 fait partie de la configuration affichée
-    const tintOf = x => !simEdit && simCfg.on && x.sk && (sim.checks.includes(x.sk) || p1fav(x)) ? (simCfg.current === 'fav' ? ' gb' : sim.checks.indexOf(x.sk) < sim.FIRST ? ' g1' : ' g2') : '';      // affichage simple : ligne cochée = texte vert + pastille (3 premières : vert ; suivantes : tirant vers le jaune)
-    const pickNm = x => stOf(x) !== 'pick' ? '' : simPick.editing ? `<span class="nm pnm"><input class="pnIn" maxlength="40" placeholder="nom" aria-label="Nom du paramètre" value="${esc(simPick.draft || '')}"><i class="nmOk pnOk" role="button" title="Valider le nom">${ic('ok')}</i></span>` : `<span class="nm pnm">${simPick.name ? `<span class="nmTxt">${esc(simPick.name)}</span>` : ''}<i class="nmEd pnEd" role="button" title="${simPick.name ? 'Modifier le nom' : 'Donner un nom'}">${ic('edit')}</i></span>`;      // stylo : nom du paramètre rouge choisi
-    const favColorOf = x => simProbe && x.sk === simProbe.sk || (simPick && simPick.sk === x.sk) ? '#1552eb' : (stOf(x) === 'del' || stOf(x) === 'rep') ? '#ff4d4f' : stOf(x) === 'rep2' ? '#ebce15' : simCfg.on && sim.checks.includes(x.sk) && simCfg.current !== 'fav' ? (sim.checks.indexOf(x.sk) < sim.FIRST ? '#14c408' : '#ebce15') : '#4da3ff';      // couleur de la ligne : vert / jaune / bleu (paramètre à cercles) / rouge ; sinon bleu du contour du mode édition
-    const favHtml = x => {      // étoile : contour bleu pour les favoris ; pleine seulement si la ligne fait partie de la config active (couleur de la ligne : vert / jaune, bleu sous « Favoris ») ; sinon vide
-      if (!x.sk || !simCfg.on) return '<span class="fav0"></span>';      // switch éteint : aucune étoile
-      const dflt = !!simProbe && x.sk === simProbe.sk, isFav = dflt || simFavCfg.items.some(i => i.sk === x.sk) || (simCfg.current === 'fav' && sim.checks.includes(x.sk)), filled = isFav && (sim.checks.includes(x.sk) || p1fav(x)), stroke = dflt ? '#1552eb' : '#4da3ff';
-      const lc = dflt || simCfg.current === 'fav' || !simCfg.on ? stroke : sim.checks.indexOf(x.sk) < sim.FIRST ? '#14c408' : '#ebce15', sty = filled ? `color:${lc}` : isFav ? `color:${stroke}` : '';      // favori hors config : contour bleu, vide ; favori dans la config active : étoile pleine de la couleur de la ligne (vert / jaune, bleu sous « Favoris »)
-      return `<span class="fav${isFav ? ' isfav' : ''}${filled ? ' on' : ''}" role="button" tabindex="0" style="${sty}" title="${dflt ? 'Favori n°1 (paramètre du bouton à étoiles)' : isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}" aria-label="Favori" aria-pressed="${isFav}"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 17l-5.2 2.7 1-5.9-4.3-4.1 5.9-.8z"/></svg></span>`;
-    };
-    const nmHtml = x => {      // (switch éteint : le nom par défaut du favori n°1 n'apparaît pas non plus)                                                // nom donné à une valeur cochée : zone à remplir + validation, ou nom + modification
-      if (simCfg.on && simProbe && x.sk === simProbe.sk && !sim.checks.includes(x.sk)) return simProbe.custom ? `<span class="nm"><span class="nmTxt">${esc(simProbe.custom)}</span></span>` : '';      // favori n°1 hors config : son nom (facultatif) s'affiche quand même
+    const tintOf = x => !simEdit && simCfg.on && x.sk && sim.checks.includes(x.sk) ? (sim.checks.indexOf(x.sk) < sim.FIRST ? ' g1' : ' g2') : '';      // affichage simple : ligne cochée = texte vert + pastille (3 premières : vert ; suivantes : tirant vers le jaune)
+    const nmHtml = x => {      // nom donné à un favori (valeur cochée) : zone à remplir + validation, ou nom + modification
       if (!simCfg.on || !x.sk || !sim.checks.includes(x.sk)) return '';
       if (simEdit && sim.editing === x.sk) return `<span class="nm"><input class="nmIn" maxlength="40" placeholder="nom" aria-label="Nom dans les simulations" value="${esc(sim.draft)}"><i class="nmOk" role="button" title="Valider le nom">${ic('ok')}</i></span>`;
-      const nm = sim.names[x.sk] || (simCfg.on && simProbe && x.sk === simProbe.sk ? simProbe.custom : ''); if (!simEdit) return nm ? `<span class="nm"><span class="nmTxt">${esc(nm)}</span></span>` : '';      // affichage simple : le nom seulement, sans crayon
+      const nm = sim.names[x.sk] || ''; if (!simEdit) return nm ? `<span class="nm"><span class="nmTxt">${esc(nm)}</span></span>` : '';      // affichage simple : le nom seulement, sans crayon
       return `<span class="nm">${nm ? `<span class="nmTxt">${esc(nm)}</span>` : ''}<i class="nmEd" role="button" title="${nm ? 'Modifier le nom' : 'Donner un nom'}">${ic('edit')}</i></span>`;
     };
     body.innerHTML = note + `<div class="stk">${figsHtml}${T.below || ''}</div>` +      // VP à écran : vues, points, forme et filtres restent figés en haut quand la liste défile
      
-      rows.map((x, i) => !vis(x, i) ? '' : x.sec ? `<div class="sec">${x.sec}</div>` :
+      rows.map((x, i) => x.sec ? `<div class="sec">${x.sec}</div>` :
         tab === 'vpe' && x.cid && vpe.editing === x.cid ? `<div class="m medit sel" data-i="${i}"><span class="n">${x.n}</span><span class="f">${x.f}</span><span class="vedit">${['x', 'y', 'z'].map((a, k) => `<input id="e${a.toUpperCase()}" type="text" inputmode="text" autocomplete="off" spellcheck="false" aria-label="${a}" placeholder="${a}" value="${vpe.edraft[k]}">`).join('')}<button class="hbtn vok" id="eOk">OK</button><button class="hbtn vok" id="eCancel" aria-label="Annuler">✕</button></span></div>` :
-        `<div role="button" tabindex="0" class="m ${i === selRow ? 'sel' : ''}${stOf(x) ? ' ' + stOf(x) : ''}${simCfg.on && x.sk && !stOf(x) && !sim.checks.includes(x.sk) && !p1fav(x) ? ' nocfg' : ''}${simCfg.on && simProbe && x.sk === simProbe.sk ? ' pn1' : ''}${tintOf(x)}${simEdit && simCfg.on && x.sk && sim.checks.includes(x.sk) ? (simCfg.current === 'fav' ? ' eb' : sim.checks.indexOf(x.sk) < sim.FIRST ? ' e1' : ' e2') : ''}${vfOf(x) ? ' ' + vfOf(x).c : ''}" data-i="${i}"${vfOf(x) ? ` style="animation-delay:-${vfOf(x).ms}ms"` : ''}${x.d ? ` data-d="${x.d.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"` : ''}>${!simCfg.on ? '' : x.sk && simEdit ? `<span class="ck${stOf(x) ? ' on ' + stOf(x) : sim.checks.includes(x.sk) ? (simCfg.current === 'fav' ? ' on cb' : sim.checks.indexOf(x.sk) < sim.FIRST ? ' on' : ' on c2') : ''}" role="checkbox" aria-checked="${!!stOf(x) || sim.checks.includes(x.sk)}" data-tip="afficher la valeur dans les simulations"></span>` : `<span class="ckSlot">${tintOf(x) ? '<i class="dot"></i>' : ''}</span>`}<span class="n">${x.n}</span><span class="f">${x.f}${x.d ? '<i class="ib" aria-hidden="true">i</i>' : ''}${nmHtml(x)}${pickNm(x)}${simCfg.on && simProbe && x.sk === simProbe.sk ? '<span class="smPrbNo inRow" title="Favori n°1" aria-label="Favori n°1">N°1</span>' : ''}${stOf(x) === 'pick' ? '<span class="repAct"><button type="button" class="hbtn pickGo">valider la sélection</button></span>' : stOf(x) === 'del' ? '<span class="repAct"><button type="button" class="hbtn primary delOk">supprimer</button><button type="button" class="hbtn delNo">conserver</button></span>' : stOf(x) === 'rep2' ? (rpOf(x) === 'rep2' ? '<span class="repAct"><button type="button" class="hbtn primary repGo">remplacer par cette valeur</button></span>' : '<span class="repAct"><button type="button" class="hbtn primary repOk">ajouter</button><button type="button" class="hbtn pdRm">retirer</button></span>') : ''}</span><b${x.pxk ? ` class="pxv" title="${pxFull.has(x.pxk) ? 'Appuyer pour abréger' : 'Appuyer pour la valeur pleine'}"` : ''}>${x.val}</b>${favHtml(x)}</div>`).join('');
+        `<div role="button" tabindex="0" class="m ${i === selRow ? 'sel' : ''}${stOf(x) ? ' ' + stOf(x) : ''}${simCfg.on && x.sk && !stOf(x) && !sim.checks.includes(x.sk) ? ' nocfg' : ''}${tintOf(x)}${simEdit && simCfg.on && x.sk && sim.checks.includes(x.sk) ? (sim.checks.indexOf(x.sk) < sim.FIRST ? ' e1' : ' e2') : ''}${vfOf(x) ? ' ' + vfOf(x).c : ''}" data-i="${i}"${vfOf(x) ? ` style="animation-delay:-${vfOf(x).ms}ms"` : ''}${x.d ? ` data-d="${x.d.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"` : ''}>${!simCfg.on ? '' : x.sk && simEdit ? `<span class="ck${stOf(x) ? ' on ' + stOf(x) : sim.checks.includes(x.sk) ? (sim.checks.indexOf(x.sk) < sim.FIRST ? ' on' : ' on c2') : ''}" role="checkbox" aria-checked="${!!stOf(x) || sim.checks.includes(x.sk)}" data-tip="favori de la configuration (affiché dans les simulations)"></span>` : `<span class="ckSlot">${tintOf(x) ? '<i class="dot"></i>' : ''}</span>`}<span class="n">${x.n}</span><span class="f">${x.f}${x.d ? '<i class="ib" aria-hidden="true">i</i>' : ''}${nmHtml(x)}${stOf(x) === 'del' ? '<span class="repAct"><button type="button" class="hbtn primary delOk">supprimer</button><button type="button" class="hbtn delNo">conserver</button></span>' : stOf(x) === 'rep2' ? (rpOf(x) === 'rep2' ? '<span class="repAct"><button type="button" class="hbtn primary repGo">remplacer par cette valeur</button></span>' : '<span class="repAct"><button type="button" class="hbtn primary repOk">ajouter</button><button type="button" class="hbtn pdRm">retirer</button></span>') : ''}</span><b${x.pxk ? ` class="pxv" title="${pxFull.has(x.pxk) ? 'Appuyer pour abréger' : 'Appuyer pour la valeur pleine'}"` : ''}>${x.val}</b></div>`).join('');
     body.onclick = e => {
-      const ro = e.target.closest('.repOk, .repGo, .pickGo, .repEye, .apBtn, .delOk, .delNo, .pdRm, .favBack');
-      if (ro) { if (ro.classList.contains('favBack')) { simFavOnly = false; renderDetails(r); } else if (ro.classList.contains('pickGo')) simPickDo(); else if (ro.classList.contains('repGo')) simReplDo(); else if (ro.classList.contains('pdRm')) simPendRemove(rows[+ro.closest('.m').dataset.i].sk); else if (ro.classList.contains('delOk')) simDelValidate(rows[+ro.closest('.m').dataset.i].sk); else if (ro.classList.contains('delNo')) { simDel.delete(rows[+ro.closest('.m').dataset.i].sk); renderDetails(r); } else if (ro.classList.contains('apAdd')) simAddAll(); else if (ro.classList.contains('apDel')) simDelAll(); else if (ro.classList.contains('repOk')) simValidate(rows[+ro.closest('.m').dataset.i].sk); else simBackRestore(); return; }      // « valider » (ligne jaune) · flèche pointillée (ligne verte) : retour au panneau
-      const fv = e.target.closest('.fav');
-      if (fv) { if (simEdit) simFavToggle(rows[+fv.closest('.m').dataset.i]); return; }      // les étoiles ne se modifient qu'en mode édition      // étoile : favori
-      const pn = e.target.closest('.pnm');
-      if (pn) { if (e.target.closest('.pnOk')) { simPick.name = (simPick.draft || '').trim(); simPick.editing = false; renderDetails(r); } else if (e.target.closest('.pnEd')) { simPick.editing = true; simPick.draft = simPick.name || ''; renderDetails(r); } return; }      // nom du paramètre rouge
+      const ro = e.target.closest('.repOk, .repGo, .repEye, .apBtn, .delOk, .delNo, .pdRm');
+      if (ro) { if (ro.classList.contains('repGo')) simReplDo(); else if (ro.classList.contains('pdRm')) simPendRemove(rows[+ro.closest('.m').dataset.i].sk); else if (ro.classList.contains('delOk')) simDelValidate(rows[+ro.closest('.m').dataset.i].sk); else if (ro.classList.contains('delNo')) { simDel.delete(rows[+ro.closest('.m').dataset.i].sk); renderDetails(r); } else if (ro.classList.contains('apAdd')) simAddAll(); else if (ro.classList.contains('apDel')) simDelAll(); else if (ro.classList.contains('repOk')) simValidate(rows[+ro.closest('.m').dataset.i].sk); else simBackRestore(); return; }      // « valider » (ligne jaune) · flèche pointillée (ligne verte) : retour au panneau
       const nmEl = e.target.closest('.nm');
       if (nmEl) {                                                         // nom : valider / modifier (la ligne n'est pas sélectionnée)
         const k = rows[+nmEl.closest('.m').dataset.i].sk;
@@ -2820,7 +2797,6 @@
       const ck = e.target.closest('.ck');
       if (ck) {                                                           // case à cocher : valeur affichée dans les simulations (3 au plus, les autres cases se grisent)
         const k = rows[+ck.closest('.m').dataset.i].sk, at = sim.checks.indexOf(k);
-        if (simPick) { simPick.sk = simPick.sk === k ? null : k; selRow = +ck.closest('.m').dataset.i; renderDetails(r); return; }      // choix d'un paramètre libre : les paramètres déjà actifs ne sont pas sélectionnables ; une case libre devient la sélection (rouge)
         if (simBackState && simBackState.add && at >= 0) return;      // ajout depuis l'aperçu : seule une case non cochée peut être choisie
         if (simRepl && !simRepl.done) {      // remplacement en cours : la ligne rouge reste cochée, et seule une case non cochée peut être choisie (elle devient jaune ; sa propre case la décoche)
           if (k === simRepl.old || (at >= 0 && k !== simRepl.nw)) return;
@@ -2846,7 +2822,7 @@
       if (tab === 'vpe' && rows[selRow] && rows[selRow].cid && vpe.editing !== rows[selRow].cid) startEdit(rows[selRow].cid);      // ligne d'un point créé : ses coordonnées deviennent modifiables
       renderDetails(r); retip();
     };
-    const stepRow = d => () => { const ix = rows.map((x, i) => x.sec || !vis(x, i) ? -1 : i).filter(i => i >= 0); if (!ix.length) return; selRow = ix[(ix.indexOf(selRow) + d + ix.length) % ix.length]; { const ni = simNavKeys().indexOf(rows[selRow].sk); if (ni >= 0) simNav = ni; } renderDetails(r);      // le x/x de la barre du haut suit le défilement ; sur une ligne qui n'est pas dans la config, il ne change pas
+    const stepRow = d => () => { const ix = rows.map((x, i) => x.sec ? -1 : i).filter(i => i >= 0); if (!ix.length) return; selRow = ix[(ix.indexOf(selRow) + d + ix.length) % ix.length]; { const ni = simNavKeys().indexOf(rows[selRow].sk); if (ni >= 0) simNav = ni; } renderDetails(r);      // le x/x de la barre du haut suit le défilement ; sur une ligne qui n'est pas dans la config, il ne change pas
      scrollToRow(selRow); retip(); };      // ligne de calcul suivante (d = 1) ou précédente (d = −1)
     const nextRow = stepRow(1);
     if (arrows) { $('rowNext').onclick = nextRow; $('rowPrev').onclick = stepRow(-1); }
@@ -2901,12 +2877,6 @@
       const sh = $('vShort'); if (sh) sh.onchange = () => { vpe.short = sh.checked; again2(); };
       const fu = $('vFull'); if (fu) fu.onchange = () => { vpe.full = fu.checked; again2(); };
       [['vFrm', 0], ['vEl', 1]].forEach(([id, k]) => { const f = $(id); if (f) f.onchange = () => { vpe.flt[k] = f.value; again2(); }; });
-    }
-    const pi = body.querySelector('.pnIn');
-    if (pi) {
-      pi.oninput = () => { simPick.draft = pi.value; };
-      pi.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') { simPick.name = (simPick.draft || '').trim(); simPick.editing = false; renderDetails(r); } else if (e.key === 'Escape') { simPick.editing = false; renderDetails(r); } };
-      pi.focus();
     }
     const ni = body.querySelector('.nmIn');                              // zone du nom d'une valeur cochée
     if (ni) {
@@ -3079,9 +3049,11 @@
     $('title').textContent = titles[page];
     const calc = page === 'calc';
     $('title').style.display = calc ? 'none' : '';      // pas de titre sur la page Calcul
-    ['locks', 'auto', 'calcWrap'].forEach(id => $(id).style.display = calc ? '' : 'none');
+    ['locks', 'auto', 'calcWrap', 'lockBtn', 'starBtn'].forEach(id => $(id).style.display = calc ? '' : 'none');
+    if (window.Panels) Panels.closeAll();
     $('cfgBtn').style.display = calc && key !== '3d' ? '' : 'none';      // pas de vue compacte en 3D
     if (!calc) $('details').classList.remove('open');
+    if (window.WinZoom) WinZoom.close();
     if (key === '3d') View3D.enter(); else View3D.leave();
     if (calc) { refreshVps(); render(); }
   };
@@ -3093,7 +3065,17 @@
   const ensureRotManual = () => { if (!adv.rot) { advToggled = true; setOpt('rot', true); } };
   const ensureScrMoved = () => { if (!S.scr) { advToggled = true; S.scr = scrKeep || { dx: 0, dy: 0, dz: 0, yaw: 0, pitch: 0, roll: 0 }; Object.assign(fv, { mode: 'auto', manual: false }); } };
   const api3d = {
-    S, G, locks, last: () => lastR, render: () => render(), hl: () => simHl3,      // hl : surbrillance jaune des valeurs vertes / favoris cliquées
+    S, G, locks, last: () => lastR, render: () => render(), hl: () => simHl3,
+    calcOn() {      // « Calcul config » coché (fenêtre Affichage, accès rapide d'une vue agrandie) : switch vert sur ON, bandeau données déployé, et la 1re valeur verte soulignée (donc dessinée dans les vues)
+      if (!simCfg.on) { simCfg.on = true; simChanged(); }
+      if (window.Layout3D) Layout3D.setBand(true);
+      if (simHl == null && sim.checks.length) { simHl = sim.checks[0]; render(); }      // une valeur déjà choisie est gardée ; les valeurs se repeignent au calcul suivant (simSchedule)
+    },
+    calcOff() {      // « Calcul config » décoché : la valeur soulignée ne l'est plus (ni dessinée dans les vues), comme un second appui sur elle
+      if (simHl == null) return;
+      simHl = null;
+      if (simCfg.on) simPaintVals(); simHlUpdate();
+    },      // hl : surbrillance jaune des valeurs vertes / favoris cliquées
     isLocked: k => !!locks[k],
     setLock(k, on) { if (on && (k === 'pan' || k === 'tilt' || k === 'roll')) ensureRotManual(); locks[k] = !!on; render(); },      // verrouiller pan / tilt / roll fige l'orientation actuelle (orientation manuelle)
     moveVP(p) {                                                    // p = {x, y, z} (absolus) ; renvoie les paramètres verrouillés qu'on a voulu changer
@@ -3137,9 +3119,18 @@
   buildParams(); buildLockPills(); syncRot();
   $('title').style.display = 'none';                 // page Calcul au démarrage
   attachDrag('svgSide', ['y', 'z']); attachDrag('svgTop', ['x', 'y']); attachDrag('svgFace', ['x', 'z'], '.vpHandle'); renderSimHead(); renderSimSettings(); renderIoBoxes(); attachFaceDrag(); attachDisp(); attachDispView('dispSelSide', 'svgSide', false); attachDispView('dispSelTop', 'svgTop', true);
-  document.querySelectorAll('.expand').forEach(b => b.onclick = () => { const card = b.closest('.card'); if (in3d()) { Layout3D.fullFrom(card); return; } if ($('p-calc').classList.contains('cfg')) { $('cfgBtn').click(); toggleFull(card, true); backToCompact = true; return; } toggleFull(card); });      // en vue compacte : on en sort, puis la vue passe en plein écran
-  document.addEventListener('click', e => { const c = e.target.closest('.hud .chip'); if (c) { locks[c.dataset.k] = !locks[c.dataset.k]; render(); } });      // chips de la barre HUD (vues plein écran 2D, grande fenêtre de la page 3D) : verrouille / libère
-  addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.card.full').forEach(c => toggleFull(c, false)); });
+  document.addEventListener('click', e => { const c = e.target.closest('.hud .chip'); if (c) { locks[c.dataset.k] = !locks[c.dataset.k]; render(); } });
+  const zlAct = t => { const z = t.closest('.zlk [data-zl]'), p = t.closest('.zlk [data-zlp]'); if (z) toggleKeys(ZL.find(q => q[0] === z.dataset.zl)[2]); else if (p) toggleLockSide(); return !!(z || p); };      // barre d'une vue agrandie : x, y, z, Zoom ; cadenas = volet Verrous
+  document.addEventListener('click', e => { if (zlAct(e.target)) e.stopPropagation(); });
+  document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('.zlk') && zlAct(e.target)) e.preventDefault(); });
+  $('params').addEventListener('click', e => {      // Réglages : cadenas des curseurs avancés (un paramètre) et des options lens shift / rotation / déplacer l'écran (tout le groupe)
+    const a = e.target.closest('.lk[data-ak]'), g = e.target.closest('.lk[data-ag]');
+    if (a) { e.stopPropagation(); setLockKeys([a.dataset.ak], !locks[a.dataset.ak]); }
+    else if (g) { e.preventDefault(); e.stopPropagation(); toggleKeys(ADV_GRP_KEYS[g.dataset.ag]); }
+  });      // barre de verrous d'une vue agrandie
+  $('lockBtn').onclick = openLockPanel;                                    // cadenas de la barre du haut : fenêtre Verrous
+  $('starBtn').onclick = openFavPanel;                                    // étoile de la barre du haut : favoris de la config chargée
+  if (window.WinZoom) WinZoom.on(zoomLockBar);      // chips de la barre HUD (vues plein écran 2D, grande fenêtre de la page 3D) : verrouille / libère
   render();
   /* aides de test : ?view=3d  ?mode=compact|full  ?details=quad|pos|scr|px  ?auto=1  ?unlock=1  ?adv=lens,trans,rot,off  ?lens=sx,sy (en %)  ?pop=lens  ?scroll=1  ?simdrag=dx,dy (pixels, sur la poignée de la vue de face)  ?scr=dx,dy,dz,lacet,tangage,roulis  ?faceview=room|screen  ?src=free|std|maker  ?rot=pan,tilt,roll  ?warn=1 (ouvre la liste des alertes) */
   const qs = new URLSearchParams(location.search);
@@ -3170,6 +3161,6 @@
     } else document.body.dataset.sim = 'no handle';
   }
   if (qs.get('warn')) { warnOpen = true; render(); }
-  if (qs.get('full')) toggleFull(document.querySelector('.card.' + qs.get('full')), true);
+  if (qs.get('zoom')) { const z = qs.get('zoom'), vis = q => [...document.querySelectorAll(q)].find(e => e.getClientRects().length), el = z === 'band' ? $('dataBand') : z === 'details' ? $('details') : vis(`.mw-${z}`) || vis(`.viz .card.${z}`); if (el) WinZoom.open(el); }      // ?zoom=face|side|top|v3d|views|params|disp|data|band|details : fenêtre agrandie (test)
   if (qs.get('details')) { tab = qs.get('details'); selRow = +qs.get('row') || 1; $('detBtn').click(); }
 })();

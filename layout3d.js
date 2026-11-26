@@ -1,13 +1,13 @@
 /* VP – mise en page de la page « VP » (trois présentations des mêmes éléments, qui sont déplacés dans le DOM et jamais recréés) :
 
-   • normale  : mosaïque — la scène 3D (sans titre, point d'ancrage) et trois fenêtres VUES (face, côté, dessus), RÉGLAGES (curseurs), AFFICHAGE (éléments de la scène,
-                verrous, cases du bandeau données), glissables n'importe où autour de la 3D ou de l'ensemble, redimensionnables, au contenu adaptatif ; défaut : 3D + Vues à droite ;
+   • normale  : mosaïque — la scène 3D (sans titre, point d'ancrage) et deux fenêtres VUES (face, côté, dessus) et RÉGLAGES (curseurs), glissables n'importe où autour de la 3D ou de l'ensemble, redimensionnables, au contenu adaptatif ; défaut : 3D + Vues à droite ;
                 un onglet par fenêtre au bord où elle a été posée (même fermée). Le bandeau DONNÉES flotte en bas de la scène et se replie vers la gauche.
    • compacte : de haut en bas — barre des fenêtres (cadenas = ligne des vues épinglée ; boutons qui ouvrent / ferment / amènent la fenêtre à l'écran ; séparateur entre la ligne des vues et les autres),
                 la ligne des vues (4 fenêtres graphiques en mosaïque : déplaçables, redimensionnables, fermables), puis les lignes AFFICHAGE, DONNÉES et RÉGLAGES (rétractables sans disparaître,
                 réordonnables en hauteur) ; AFFICHAGE et DONNÉES peuvent aussi entrer dans la ligne des vues par glisser (elles y deviennent des fenêtres de la mosaïque) ; RÉGLAGES sur 2 colonnes.
-   • vues élargies : une grande fenêtre à gauche, les 3 autres en colonne à droite (mosaïque, mêmes réglages libres) ; le bandeau DONNÉES reste en bas, repliable ; le ⤢ de la grande fenêtre (rouge) la met seule en vue plein écran, au-dessus de tout y compris du menu de gauche (sortie par sa croix), avec un volet latéral au choix (Vues = les autres vues, Réglages ou Affichage, un seul à la fois) ; le ⤢ d'une petite fenêtre (gris) en fait la grande ;
+   • vues élargies : une grande fenêtre à gauche, les 3 autres en colonne à droite (mosaïque, mêmes réglages libres) ; le bandeau DONNÉES reste en bas, repliable ;
                 AFFICHAGE et RÉGLAGES sortent par des onglets au bord droit.
+   Dans toutes les présentations, un double-clic (double appui) sur la barre du haut d'une fenêtre l'agrandit au centre, au-dessus du reste (winzoom.js) ; tout changement de présentation la remet à sa place.
    Le module ne calcule rien : il range les éléments fournis par index.html (cartes de vue, scène, curseurs, indicateurs). Le dessin et les gestes restent dans view3d.js / app.js. */
 (function (root) {
 'use strict';
@@ -15,25 +15,26 @@
 const $ = id => document.getElementById(id);
 const mk = (cls, tag = 'div') => { const e = document.createElement(tag); e.className = cls; return e; };
 const KP = ['util', 'perdus', 'couvert', 'ratio', 'lux', 'forme'];
-const NAMES = { views: 'Vues', face: 'Face', side: 'Côté', top: 'Dessus', v3d: '3D', disp: 'Affichage', params: 'Réglages', data: 'Données' };
+const NAMES = { views: 'Vues', face: 'Face', side: 'Côté', top: 'Dessus', v3d: '3D', params: 'Réglages', data: 'Données' };
+/* L'affichage (éléments de chaque vue, cases du bandeau données) se règle dans la fenêtre AFFICHAGE (bouton œil de la barre du haut, display.js) ; les verrous dans la fenêtre VERROUS (cadenas). */
 const TITLES = { face: 'Vue de face', side: 'Vue de côté', top: 'Vue de dessus', v3d: 'Vue 3D' };
 const GFX = ['face', 'side', 'top', 'v3d'];
 
 let cb = null, inited = false, on = false;
 let mode = 'normal', prevMode = 'normal';
-let calc, main, stage, side, colOut, viz, params, dispBox, locks, status, warnBox, simVals, kpis, band, dbIn, dragSel, tabs, root3, bar, scroll, fmain, mdata;
+let calc, main, stage, side, colOut, viz, params, status, warnBox, simVals, kpis, band, dbIn, dragSel, tabs, root3, bar, scroll, fmain, mdata;
 let nWrap = null, nHost = null, nStrip = {}, mzN = null, roN = null, fWrap = null, fStrip = {};
-let cards = {}, home = {}, park = null, mzC = null, mzF = null, mzP = null, pHost = null, rowEl = {}, dataBox = null, gfxWrap = null, ro = null, kickRaf = 0;
+let cards = {}, home = {}, park = null, mzC = null, mzF = null, rowEl = {}, dataBox = null, gfxWrap = null, ro = null, kickRaf = 0;
 const store = (() => { try { return JSON.parse(localStorage.getItem('vp3dl') || '{}'); } catch (_) { return {}; } })();
 const legacy = (() => { try { return JSON.parse(localStorage.getItem('vp3d') || '{}'); } catch (_) { return {}; } })();      // anciennes préférences : fenêtres Vues / Réglages
 const pref = { kpi: Object.assign({ util: 1, perdus: 1, couvert: 1, ratio: 1, lux: 1, forme: 1 }, store.kpi) };
 const save = () => { try { localStorage.setItem('vp3dl', JSON.stringify(pref)); } catch (_) { /* stockage indisponible */ } };
-const cpt = { tree: null, rows: ['gfx', 'disp', 'data', 'params'], gfxH: 0, fold: {}, pin: false };      // présentation compacte (gardée en mémoire pendant la session) ; fold : fenêtres rétractées ; pin : ligne des vues toujours visible
-const fl = { main: 'v3d', tree: null, max: null, panel: null, back: null, lastMax: null, dock: { params: 'r', disp: 'r' }, frac: {} };      // vues élargies ; max : fenêtre mise en plein écran (seule, au-dessus de l'ensemble) ; panel : volet latéral ouvert avec elle (views | params | disp, un seul à la fois) ; dock / frac : comme en vue principale, côté où Réglages et Affichage sont posées (leur onglet y reste, même fermées) et leur dernière taille
-const FWIN = ['params', 'disp'];                                                                          // vues élargies : fenêtres qui se chargent par leur onglet (bord de la zone), comme en vue principale ; en plein écran elles restent des volets
+const cpt = { tree: null, rows: ['gfx', 'data', 'params'], gfxH: 0, fold: {}, pin: false };      // présentation compacte (gardée en mémoire pendant la session) ; fold : fenêtres rétractées ; pin : ligne des vues toujours visible
+const fl = { main: 'v3d', tree: null, dock: { params: 'r' }, frac: {} };      // vues élargies ; dock / frac : comme en vue principale, côté où Réglages est posée (leur onglet y reste, même fermées) et leur dernière taille
+const FWIN = ['params'];                                                                          // vues élargies : fenêtres qui se chargent par leur onglet (bord de la zone), comme en vue principale
 /* vue principale : la 3D et les fenêtres Vues / Réglages / Affichage en mosaïque ; dock : côté (l, r, t, b) où chaque fenêtre est posée par rapport à la 3D, qui y garde son bouton même fermée ; frac : sa dernière taille (part de la zone) */
-const NWIN = ['views', 'params', 'disp'];
-const nav = { tree: null, dock: { views: 'r', params: 'r', disp: 'r' }, frac: {} };
+const NWIN = ['views', 'params'];
+const nav = { tree: null, dock: { views: 'r', params: 'r' }, frac: {} };
 let bandOpen = true, lastSw = null, activeView = null;                                                      // activeView : identifiant de la vue utilisateur chargée (userviews.js), sinon null
 
 /* ---------- Dispositions par défaut ---------- */
@@ -83,7 +84,7 @@ const placeInLastGroup = (tree, id) => {                                    // v
 
 /* ---------- Lignes de la présentation compacte : la ligne des vues (mosaïque), Affichage, Données, Réglages (empilées, réordonnables) ---------- */
 /* Affichage et Données sont soit une ligne, soit une fenêtre de la ligne des vues (mosaïque) où on les glisse ; Réglages reste une ligne. */
-const ROWABLE = ['disp', 'data'];
+const ROWABLE = ['data'];
 const docked = id => ROWABLE.includes(id) && mzC.has(id);
 function mkWin(title, o = {}) {
   const el = mk('mw mwRow' + (o.cls ? ' ' + o.cls : '')), head = mk('mwh'), body = mk('mwb'), t = mk('mwt', 'b');
@@ -92,9 +93,9 @@ function mkWin(title, o = {}) {
   el.append(head, body);
   return { el, head, body };
 }
-const rowContent = id => id === 'disp' ? dispBox : id === 'data' ? dataBox : params;
+const rowContent = id => id === 'data' ? dataBox : params;
 function rowDrag(e, id) {                                                   // glisser la barre de titre d'une ligne : la remonter / descendre, ou (Affichage, Données) la lâcher dans la ligne des vues
-  if (e.target.closest('button') || (e.button && e.button !== 0)) return;
+  if (e.target.closest('button') || (e.button && e.button !== 0) || rowEl[id].el.classList.contains('wz')) return;      // ligne agrandie (winzoom.js) : elle ne se déplace pas
   const x0 = e.clientX, y0 = e.clientY, row = rowEl[id].el; let active = false, hit = null, ghost = null;
   const mv = ev => {
     if (!active) {
@@ -157,7 +158,7 @@ function layoutRows() {
     if (docked(r)) continue;                                                // dans la ligne des vues : la mosaïque l'a rangée
     scroll.append(rowEl[r].el); rowEl[r].body.append(rowContent(r));
   }
-  for (const r of ['disp', 'data', 'params']) {
+  for (const r of ['data', 'params']) {
     rowEl[r].el.classList.toggle('mwFold', !!cpt.fold[r]);
     rowEl[r].head.querySelector('[data-k=fold]').textContent = cpt.fold[r] ? '▸' : '▾';
   }
@@ -167,9 +168,8 @@ function layoutRows() {
 function buildRows() {
   const foldBtn = { k: 'fold', t: '▾', title: 'Rétracter / déployer la fenêtre' };
   rowEl.params = mkWin('Réglages', { cls: 'mwPar', btns: [foldBtn] });
-  rowEl.disp = mkWin('Affichage', { cls: 'mw-disp', btns: [foldBtn] });
   rowEl.data = mkWin('Données', { cls: 'mw-data', btns: [foldBtn] });
-  for (const r of ['params', 'disp', 'data']) {
+  for (const r of ['params', 'data']) {
     rowEl[r].head.addEventListener('pointerdown', e => rowDrag(e, r));
     rowEl[r].head.addEventListener('click', e => { if (e.target.closest('[data-k=fold]')) setFold(r, !cpt.fold[r]); });
   }
@@ -187,54 +187,23 @@ function buildRows() {
 function setFold(id, v) { cpt.fold[id] = !!v; if (docked(id)) mzC.render(); else layoutRows(); }
 
 /* ---------- Mosaïques (compacte : une ligne ; vues élargies : grande + colonne) ---------- */
-/* kind : 'c' compacte (⤢ gris : vers les vues élargies) · 'f' vues élargies (grande fenêtre : ⤢ rouge, vers le plein écran ; les petites : ⤢ gris, elles deviennent la grande ; en plein écran : ✕)
-   · 'p' volet Vues du plein écran (⤢ rouge : cette vue passe en plein écran). Chaque fenêtre n'a jamais qu'un seul bouton d'agrandissement. */
+/* kind : 'n' vue principale · 'c' compacte · 'f' vues élargies. Aucun bouton d'agrandissement : une fenêtre s'agrandit par double-clic sur sa barre (winzoom.js). */
 function winDefs(kind) {
-  if (kind === 'n') return {                                                 // vue principale : la 3D (sans barre de titre, point d'ancrage) et les trois fenêtres de réglage
+  if (kind === 'n') return {                                                 // vue principale : la 3D (sans barre de titre, point d'ancrage) et les fenêtres Vues et Réglages
     v3d: { title: 'Vue 3D', el: stage, bare: true, closable: false, buttons: [] },
-    views: { title: 'Vues', el: $('win3dViews'), buttons: [] }, params: { title: 'Réglages', el: $('win3dParams'), buttons: [] }, disp: { title: 'Affichage', el: $('win3dDisp'), buttons: [] },
+    views: { title: 'Vues', el: $('win3dViews'), buttons: [] }, params: { title: 'Réglages', el: $('win3dParams'), buttons: [] },
   };
-  const hot = { k: 'full', t: '⤢', cls: 'hot', title: 'Plein écran : cette vue seule, au-dessus de tout' };
-  const def = id => ({
-    title: TITLES[id], el: id === 'v3d' ? stage : cards[id], rowable: kind === 'p',
-    buttons: () => kind === 'c' ? [{ k: 'full', t: '⤢', title: 'Vues élargies : mettre cette fenêtre en grand' }]
-      : kind === 'p' ? [hot]
-      : fl.max === id ? [{ k: 'unmax', t: '✕', title: 'Fermer le plein écran' }]
-      : fl.main === id ? [hot] : [{ k: 'full', t: '⤢', title: 'Vues élargies : en faire la grande fenêtre' }],
-    get closable() { return kind === 'f' && !fl.max; },                       // volet Vues et plein écran : pas de ✕ de fermeture (la croix du plein écran est un bouton à part)
-  });
+  const def = id => ({ title: TITLES[id], el: id === 'v3d' ? stage : cards[id], buttons: [], closable: kind === 'f' });
   const o = Object.fromEntries(GFX.map(id => [id, def(id)]));
-  if (kind === 'f') {                                                        // vues élargies : Réglages et Affichage, fenêtres de la mosaïque chargées par leur onglet (comme en vue principale)
-    o.params = { title: 'Réglages', el: $('win3dParams'), buttons: [] };
-    o.disp = { title: 'Affichage', el: $('win3dDisp'), buttons: [] };
-  }
-  if (kind === 'c') {                                                        // compacte : Affichage et Données peuvent aussi entrer dans la ligne des vues (rétractables, jamais fermées)
-    o.disp = { title: 'Affichage', el: dispBox, closable: false, foldable: true, rowable: true, buttons: [] };
+  if (kind === 'f') o.params = { title: 'Réglages', el: $('win3dParams'), buttons: [] };      // vues élargies : Réglages, fenêtre de la mosaïque chargée par son onglet (comme en vue principale)
+  if (kind === 'c') {                                                        // compacte : Données peut aussi entrer dans la ligne des vues (rétractable, jamais fermée)
     o.data = { title: 'Données', el: dataBox, closable: false, foldable: true, rowable: true, buttons: [] };
   }
   return o;
 }
-function onAction(id, k) {
-  if (k === 'full') {
-    if (mode !== 'full') { fl.max = null; fl.back = null; setMode('full', { main: id }); }      // depuis une autre présentation : on passe d'abord en vues élargies
-    else if (fl.max || id === fl.main) setMax(id);                                                              // la grande fenêtre (ou une vue du volet Vues) : plein écran
-    else { fl.tree = swapIds(fl.tree, id, fl.main) || defFull(id); fl.main = id; mzF.setTree(fl.tree); syncBig(); }         // une petite fenêtre : elle devient la grande (elle prend la place de l'ancienne, le reste de la disposition est gardé)
-  }
-  else if (k === 'unmax') exitMax();
-}
-
-/* Vue plein écran (depuis les vues élargies) : la fenêtre passe au-dessus de tout (barre du haut, barre Fenêtres, menu de gauche), seule ; on en sort par sa croix.
-   Un volet latéral (Vues, Réglages ou Affichage) peut s'ouvrir à sa droite, un seul à la fois. */
-function setMax(id) {
-  fl.max = id || null; if (id) fl.lastMax = id;
-  if (mode !== 'full') return;
-  mzF.setTree(fl.max ? { id: fl.max, w: 1 } : (fl.tree || defFull(fl.main))); fixSide();
-  applyPanel(); syncPanel(); renderBar(); renderTabsF(); kick(); syncBig();
-}
-/* Grande fenêtre (vues élargies : la plus grande ; plein écran : la seule) : id de la vue (v3d, face, side, top), ou null hors vues élargies / plein écran. Elle reçoit la barre HUD (chips verrouillables). */
+/* Grande fenêtre (vues élargies : la plus grande) : id de la vue (v3d, face, side, top), ou null hors vues élargies. Elle reçoit la barre HUD (chips verrouillables). */
 function bigView() {
   if (!on || mode !== 'full') return null;
-  if (fl.max) return fl.max;
   let best = fl.main, ba = -1, ma = -1;
   for (const id of GFX) {
     if (!mzF.has(id)) continue;
@@ -244,32 +213,20 @@ function bigView() {
   }
   return ma >= ba * .98 ? fl.main : best;                                    // à surface (presque) égale, la fenêtre principale prévue
 }
-/* Arrivée dans les vues élargies ou le plein écran (ou changement de grande fenêtre) : la fenêtre Affichage bascule sur la vue concernée, avec « Réglages supplémentaires » cochés
+/* Arrivée dans les vues élargies : la fenêtre Affichage bascule sur la grande fenêtre, avec « Réglages supplémentaires » cochés
    (vue 3D et vue de face ; les vues de côté et de dessus n'ont pas cette option). Pas appliqué quand on recharge une vue utilisateur : elle garde ce qui a été enregistré. */
 let restoring = false;
 function syncBig() {
   if (restoring || mode !== 'full' || !cb || !cb.getShow || !cb.setShow) return;
-  const b = fl.max || fl.main, w = b === 'v3d' ? '3d' : b, sh = cb.getShow(), f = sh.v && sh.v[w]; if (!f) return;
+  const b = fl.main, w = b === 'v3d' ? '3d' : b, sh = cb.getShow(), f = sh.v && sh.v[w]; if (!f) return;
   const hasAdv = 'adv' in f;
   if (sh.sel === w && (!hasAdv || f.adv)) return;
   sh.sel = w; if (hasAdv) f.adv = true;
   cb.setShow(sh);
 }
-function exitMax() {                                                        // croix : retour là d'où l'on venait (vues élargies, ou la présentation de départ si le plein écran a été pris directement)
-  if (fl.back) { const b = fl.back; fl.back = null; fl.max = null; setMode(b); } else setMax(null);
-}
-function enterMax(forceId) {                                                // bouton « Plein écran » de la barre du haut : directement en plein écran (3D par défaut, aucun volet) ; la dernière fenêtre et le dernier volet sont retrouvés
-  const id = forceId || (mode === 'full' ? fl.main : (fl.lastMax || 'v3d'));
-  if (mode === 'full') { setMax(id); return; }
-  fl.back = mode; fl.max = id; fl.lastMax = id; setMode('full', { main: fl.main, force: true });
-}
-function syncPanel() {                                                      // volet Vues du plein écran : toutes les autres vues (3D comprise) en colonne
-  if (mode !== 'full' || !fl.max || fl.panel !== 'views') return;
-  mzP.setTree({ dir: 'v', kids: GFX.filter(k => k !== fl.max).map(id => ({ id, w: 1 })) });
-}
 
 /* ---------- Barre des fenêtres (compacte, vues élargies) ---------- */
-const FOLD = ['disp', 'data', 'params'];                                      // fenêtres qui se rétractent sans disparaître (les autres se ferment)
+const FOLD = ['data', 'params'];                                      // fenêtres qui se rétractent sans disparaître (les autres se ferment)
 const curMz = () => mode === 'compact' ? mzC : mzF;
 function isOn(id) { return FOLD.includes(id) ? !cpt.fold[id] : curMz().has(id); }
 const winEl = id => id === 'params' ? rowEl.params.el : docked(id) || !FOLD.includes(id) ? curMz().shell(id).el : rowEl[id].el;
@@ -313,7 +270,7 @@ function renderBar() {
     html += `<button type="button" class="m3pin${cpt.pin ? ' on' : ''}" data-pin="1" aria-pressed="${!!cpt.pin}" title="${cpt.pin ? 'La ligne des vues reste toujours visible : cliquer pour la laisser défiler' : 'Garder la ligne des vues toujours visible (même quand on fait défiler)'}" aria-label="Garder la ligne des vues visible">${cpt.pin ? LOCK_ON : LOCK_OFF}</button>`
       + line.map(chip).join('') + `<span class="m3bsep" aria-hidden="true"></span>` + rest.map(chip).join('');
   } else {
-    html += GFX.map(chip).join('');                                           // vues élargies : Réglages et Affichage ne sont pas dans la barre, elles se chargent par leur onglet au bord de la zone
+    html += GFX.map(chip).join('');                                           // vues élargies : Réglages n'est pas dans la barre, elles se chargent par leur onglet au bord de la zone
   }
   html += `<span class="m3sp"></span><button type="button" class="m3btn" data-r="1" title="Remettre la disposition par défaut" aria-label="Disposition par défaut">↺</button>`;
   bar.innerHTML = html;
@@ -327,21 +284,18 @@ function barClick(e) {
 /* Une vue par défaut garde telle quelle la disposition qu'on lui a donnée, même quand on en sort puis qu'on y revient (sans l'avoir enregistrée comme vue utilisateur).
    Pour la remettre à son état d'origine : appui d'une seconde sur son bouton de la barre du haut (ou ↺ de la barre Fenêtres, pour la vue affichée). */
 function resetView(m) {
-  if (m === 'normal') { nav.tree = defNormal(); nav.dock = { views: 'r', params: 'r', disp: 'r' }; nav.frac = {}; }
-  else if (m === 'compact') { Object.assign(cpt, { tree: defCompact(), rows: ['gfx', 'disp', 'data', 'params'], gfxH: defGfxH(), pin: false }); mzC.unfoldAll(); }
-  else if (m === 'full') { fl.main = 'v3d'; fl.tree = defFull('v3d'); fl.dock = { params: 'r', disp: 'r' }; fl.frac = {}; }
-  else if (m === 'max') { fl.lastMax = 'v3d'; fl.panel = null; }
+  if (m === 'normal') { nav.tree = defNormal(); nav.dock = { views: 'r', params: 'r' }; nav.frac = {}; }
+  else if (m === 'compact') { Object.assign(cpt, { tree: defCompact(), rows: ['gfx', 'data', 'params'], gfxH: defGfxH(), pin: false }); mzC.unfoldAll(); }
+  else if (m === 'full') { fl.main = 'v3d'; fl.tree = defFull('v3d'); fl.dock = { params: 'r' }; fl.frac = {}; }
 }
 function resetLayout() {
-  if (mode === 'full' && fl.max) return;
   resetView(mode); setMode(mode, { main: fl.main, force: true });
   if (mode === 'normal') toast(MODE_NAMES.normal + ' : disposition par défaut rétablie');
 }
-const MODE_NAMES = { normal: 'Vue principale', compact: 'Vue compacte', full: 'Vues élargies', max: 'Plein écran' };
+const MODE_NAMES = { normal: 'Vue principale', compact: 'Vue compacte', full: 'Vues élargies' };
 function resetAndGo(m) {                                                    // appui long sur un bouton de vue : disposition par défaut, et on y va
   resetView(m);
-  if (m === 'max') { fl.back = mode === 'full' ? null : mode; if (mode === 'full') setMax('v3d'); else { fl.max = 'v3d'; setMode('full', { main: fl.main, force: true }); } }
-  else { fl.max = null; fl.back = null; setMode(m, { main: fl.main, force: true }); }
+  setMode(m, { main: fl.main, force: true });
   toast(MODE_NAMES[m] + ' : disposition par défaut rétablie');
 }
 let toastEl = null, toastT = 0;
@@ -359,24 +313,25 @@ function swapIds(t, a, b) {                                                 // �
 /* ---------- Rangement des éléments ---------- */
 /* disposition de base : tout est rassemblé comme dans la présentation normale (les autres partent de là) */
 function toBase() {
-  viz.append(cards.face, cards.side, cards.top); $('viewsBody').append(viz); pHost.remove();
-  $('paramsBody').append(params); $('dispBody').append(dispBox); $('locksHome').append(locks);
+  viz.append(cards.face, cards.side, cards.top); $('viewsBody').append(viz);
+  $('paramsBody').append(params);
   colOut.prepend(warnBox); colOut.prepend(status);
   dbIn.append(kpis, simVals); colOut.append(band); colOut.append(dragSel);
   stage.append(colOut, tabs);
   calc.insertBefore(stage, calc.firstChild); calc.insertBefore(side, stage.nextSibling);
-  side.append($('win3dViews'), $('win3dParams'), $('win3dDisp'));
-  $('win3dParams').classList.remove('mwPar', 'wide'); $('win3dDisp').classList.remove('wide'); viz.classList.remove('row');
+  side.append($('win3dViews'), $('win3dParams'));
+  $('win3dParams').classList.remove('mwPar', 'wide'); viz.classList.remove('row');
   nWrap.hidden = true; bar.hidden = false;
   root3.hidden = true; mdata.replaceChildren(); scroll.replaceChildren();
 }
 function arrange(m) {
   if (floatP) { floatP = null; cancelAnimationFrame(floatRaf); floatRaf = 0; rowEl.params.el.classList.remove('mwFloat'); }      // changement de présentation en plein geste : plus de saut
+  if (root.WinZoom) root.WinZoom.close();                                   // une fenêtre agrandie revient à sa place avant le rangement
   toBase(); mode = m;
   for (const [k, c] of [['normal', 'm3n'], ['compact', 'm3c'], ['full', 'm3f']]) { calc.classList.toggle(c, m === k); main.classList.toggle(c, m === k); }
   if (m === 'normal') {
     root3.hidden = false; scroll.hidden = true; fmain.hidden = true; nWrap.hidden = false; bar.hidden = true;
-    ['win3dViews', 'win3dParams', 'win3dDisp'].forEach(k => $(k).classList.remove('hide3d'));
+    ['win3dViews', 'win3dParams'].forEach(k => $(k).classList.remove('hide3d'));
     mzN.setTree(nav.tree || defNormal()); requestAnimationFrame(adaptN);
   } else if (m === 'compact') {
     root3.hidden = false; scroll.hidden = false; fmain.hidden = true;
@@ -385,8 +340,8 @@ function arrange(m) {
     mzC.setTree(cpt.tree || defCompact()); layoutRows();
   } else if (m === 'full') {
     root3.hidden = false; scroll.hidden = true; fmain.hidden = false;
-    fmain.append(side, tabs); mdata.append(band); $('viewsBody').append(pHost);
-    mzF.setTree(fl.max ? { id: fl.max, w: 1 } : (fl.tree || defFull(fl.main))); fixSide(); syncPanel(); renderTabsF(); requestAnimationFrame(adaptN);
+    fmain.append(side, tabs); mdata.append(band);
+    mzF.setTree(fl.tree || defFull(fl.main)); renderTabsF(); requestAnimationFrame(adaptN);
   }
   applyPanel(); vars(); syncKpi(); setBand(bandOpen); renderModes(); kick(); syncBig();
 }
@@ -406,7 +361,7 @@ function snapshot() {
   if (cb && cb.getShow) s.show = cb.getShow();
   if (mode === 'normal') s.norm = { tree: mzN.state() || nav.tree, dock: { ...nav.dock }, frac: { ...nav.frac } };
   else if (mode === 'compact') s.cpt = { tree: mzC.state() || cpt.tree, rows: cpt.rows.slice(), gfxH: cpt.gfxH, fold: { ...cpt.fold }, pin: !!cpt.pin };
-  else s.full = { main: fl.main, tree: fl.tree || defFull(fl.main), max: fl.max, panel: fl.panel, dock: { ...fl.dock }, frac: { ...fl.frac } };
+  else s.full = { main: fl.main, tree: fl.tree || defFull(fl.main), dock: { ...fl.dock }, frac: { ...fl.frac } };
   return JSON.parse(JSON.stringify(s));
 }
 function prune(t, ok) {                                                     // ne garde de l'arbre mémorisé que des fenêtres connues
@@ -427,8 +382,8 @@ function restore(s, id) {
     nav.tree = has3d(t) ? t : defNormal();
     NWIN.forEach(k => { const d = s.norm.dock && s.norm.dock[k]; nav.dock[k] = ['l', 'r', 't', 'b'].includes(d) ? d : 'r'; const f = s.norm.frac && +s.norm.frac[k]; if (f > 0) nav.frac[k] = f; else delete nav.frac[k]; });
   } else if (s.mode === 'compact' && s.cpt) {
-    const c = s.cpt, ids = ['gfx', 'disp', 'data', 'params'];
-    cpt.tree = prune(c.tree, [...GFX, 'disp', 'data']) || defCompact();
+    const c = s.cpt, ids = ['gfx', 'data', 'params'];
+    cpt.tree = prune(c.tree, [...GFX, 'data']) || defCompact();
     cpt.rows = (c.rows || []).filter((r, i, a) => ids.includes(r) && a.indexOf(r) === i); ids.forEach(r => { if (!cpt.rows.includes(r)) cpt.rows.push(r); });
     cpt.gfxH = Math.max(130, Math.min(innerHeight * 0.9, +c.gfxH || defGfxH()));
     for (const k in cpt.fold) delete cpt.fold[k];
@@ -438,46 +393,37 @@ function restore(s, id) {
   } else if (s.mode === 'full' && s.full) {
     fl.main = GFX.includes(s.full.main) ? s.full.main : 'v3d'; fl.tree = prune(s.full.tree, [...GFX, ...FWIN]) || defFull(fl.main);
     FWIN.forEach(k => { const d = s.full.dock && s.full.dock[k]; fl.dock[k] = ['l', 'r', 't', 'b'].includes(d) ? d : 'r'; const f = s.full.frac && +s.full.frac[k]; if (f > 0) fl.frac[k] = f; else delete fl.frac[k]; });
-    fl.max = GFX.includes(s.full.max) ? s.full.max : null; fl.panel = ['views', 'params', 'disp'].includes(s.full.panel) ? s.full.panel : null; fl.back = null;
   }
   activeView = id || null;
   if (!on) { mode = s.mode; renderModes(); return; }                           // pas sur la page VP : la vue s'applique à l'arrivée
   restoring = true; try { setMode(s.mode, { force: true, main: fl.main }); } finally { restoring = false; }
 }
 function renderModes() {
-  document.querySelectorAll('#m3modes [data-m]').forEach(b => { const m = b.dataset.m, o = !activeView && (m === 'max' ? mode === 'full' && !!fl.max : m === 'full' ? mode === 'full' && !fl.max : m === mode); b.classList.toggle('on', o); b.setAttribute('aria-pressed', o); });
+  document.querySelectorAll('#m3modes [data-m]').forEach(b => { const o = !activeView && b.dataset.m === mode; b.classList.toggle('on', o); b.setAttribute('aria-pressed', o); });
   if (root.UserViews) root.UserViews.sync();
 }
 
 /* ---------- Fenêtres de droite (normale, vues élargies), onglets, bandeau données ---------- */
 function applyPanel() {
-  if (mode === 'normal') { main.classList.remove('p3noviews', 'p3noparams', 'p3nodisp', 'p3off', 'm3max'); calc.classList.remove('m3max'); return; }      // vue principale : les fenêtres sont dans la mosaïque (renderTabsN)
-  const full = mode === 'full', mx = full && !!fl.max;                      // plein écran d'une fenêtre : un seul volet à la fois (fl.panel)
-  const v = mx ? fl.panel === 'views' : false, p = mx ? fl.panel === 'params' : false, d = mx ? fl.panel === 'disp' : false;      // vues élargies : plus de volets, Réglages et Affichage sont des fenêtres de la mosaïque (onglets) ; volets seulement en plein écran
-  calc.classList.toggle('m3max', mx); main.classList.toggle('m3max', mx);
-  main.classList.toggle('p3noviews', !v); main.classList.toggle('p3noparams', !p); main.classList.toggle('p3nodisp', !d); main.classList.toggle('p3off', !v && !p && !d);
-  $('win3dViews').classList.toggle('hide3d', !v); $('win3dParams').classList.toggle('hide3d', mx && !p); $('win3dDisp').classList.toggle('hide3d', mx && !d);
-  tabs.querySelectorAll('button[data-t]').forEach(b => { const k = b.dataset.t, onb = k === 'views' ? v : k === 'params' ? p : d; b.classList.toggle('on', !!onb); b.setAttribute('aria-pressed', !!onb); });
+  if (mode === 'normal') { main.classList.remove('p3noviews', 'p3noparams', 'p3nodisp', 'p3off'); return; }      // vue principale : les fenêtres sont dans la mosaïque (renderTabsN)
+  main.classList.add('p3noviews', 'p3noparams', 'p3nodisp', 'p3off');      // compacte, vues élargies : pas de volet à droite (Réglages est une ligne ou une fenêtre de la mosaïque)
+  $('win3dViews').classList.add('hide3d'); $('win3dParams').classList.remove('hide3d');
+  tabs.querySelectorAll('button[data-t]').forEach(b => { b.classList.remove('on'); b.setAttribute('aria-pressed', false); });
 }
 function toggle(k) {
-  if (mode === 'full' && fl.max) fl.panel = fl.panel === k ? null : k;      // plein écran : les volets se remplacent l'un l'autre
-  else if (mode === 'full') { if (FWIN.includes(k)) fToggle(k); return; }      // vues élargies : l'onglet charge / ferme la fenêtre dans la mosaïque
-  else if (mode === 'normal') { nToggle(k); return; }
-  applyPanel(); syncPanel(); kick();
+  if (mode === 'full') { if (FWIN.includes(k)) fToggle(k); }                // vues élargies : l'onglet charge / ferme la fenêtre dans la mosaïque
+  else if (mode === 'normal') nToggle(k);
 }
 /* ---------- Vues élargies : Réglages / Affichage chargées par leur onglet (même fonctionnement que la vue principale) ---------- */
 function fToggle(k) { if (mzF.has(k)) mzF.close(k); else mzF.open(k); }
-function updateDocksF() { if (mode !== 'full' || fl.max || !fl.tree) return; FWIN.forEach(k => { if (mzF.has(k)) fl.dock[k] = dockSide(fl.tree, k, fl.main) || fl.dock[k]; }); }
-function renderTabsF() {                                                    // un onglet par fenêtre, sur le bord où elle a été posée (même fermée) ; en plein écran ce sont les volets, donc aucun onglet ici
+function updateDocksF() { if (mode !== 'full' || !fl.tree) return; FWIN.forEach(k => { if (mzF.has(k)) fl.dock[k] = dockSide(fl.tree, k, fl.main) || fl.dock[k]; }); }
+function renderTabsF() {                                                    // un onglet par fenêtre, sur le bord où elle a été posée (même fermée)
   for (const q of ['l', 'r', 't', 'b']) fStrip[q].replaceChildren();
-  if (mode !== 'full' || fl.max) return;
+  if (mode !== 'full') return;
   for (const k of FWIN) {
     const b = mk('n3Tab' + (mzF.has(k) ? ' on' : ''), 'button'); b.type = 'button'; b.dataset.f = k; b.textContent = NAMES[k]; b.setAttribute('aria-pressed', mzF.has(k));
     b.title = mzF.has(k) ? 'Fermer la fenêtre ' + NAMES[k] : 'Ouvrir la fenêtre ' + NAMES[k]; fStrip[fl.dock[k] || 'r'].append(b);
   }
-}
-function fixSide() {                                                        // plein écran : Réglages et Affichage reviennent dans leur volet (la mosaïque ne contient alors que la fenêtre seule)
-  if (mode === 'full' && fl.max) side.append($('win3dParams'), $('win3dDisp'));
 }
 /* ---------- Vue principale : mosaïque 3D + Vues / Réglages / Affichage, onglets sur les bords ---------- */
 function nToggle(k) { if (mzN.has(k)) mzN.close(k); else mzN.open(k); }
@@ -490,23 +436,22 @@ function renderTabsN() {                                                    // u
   }
   const r = mk('n3Tab n3Reset', 'button'); r.type = 'button'; r.dataset.nr = '1'; r.textContent = '↺'; r.title = 'Remettre la vue principale par défaut (3D et Vues à droite)'; r.setAttribute('aria-label', 'Disposition par défaut'); nStrip.r.append(r);
 }
-function adaptN() {                                                         // le contenu s'adapte à la forme de la fenêtre : 3 vues en ligne si elle est large, réglages sur 2 colonnes, affichage en lignes
-  const norm = mode === 'normal'; if (!norm && !(mode === 'full' && !fl.max)) return;
+function adaptN() {                                                         // le contenu s'adapte à la forme de la fenêtre : 3 vues en ligne si elle est large, réglages sur 2 colonnes
+  const norm = mode === 'normal'; if (!norm && mode !== 'full') return;
   const mz = norm ? mzN : mzF;
   for (const k of norm ? NWIN : FWIN) {
     if (!mz.has(k)) continue;
     const sh = mz.shell(k).el, w = sh.offsetWidth, h = sh.offsetHeight; if (!w || !h) continue;
     if (k === 'views') viz.classList.toggle('row', w > h * 1.5);
     else if (k === 'params') $('win3dParams').classList.toggle('mwPar', w >= 560);
-    else $('win3dDisp').classList.toggle('wide', w >= 520);
   }
 }
 function syncKpi() {
   KP.forEach(k => { calc.classList.toggle('hk-' + k, !pref.kpi[k]); });
-  $('kchk').querySelectorAll('button[data-kp]').forEach(b => { const o = !!pref.kpi[b.dataset.kp]; b.classList.toggle('on', o); b.setAttribute('aria-pressed', o); });
+  if (root.Display) root.Display.refresh();                                 // cases du bandeau données dans la fenêtre Affichage
 }
 function setBand(open) {
-  bandOpen = open; band.classList.toggle('closed', !open);
+  bandOpen = !!open; band.classList.toggle('closed', !open); if (root.Display) root.Display.refresh();
   const t = $('dbTab'); t.textContent = open ? '‹' : '›'; t.setAttribute('aria-expanded', open); t.title = open ? 'Replier le bandeau données' : 'Déployer le bandeau données'; t.setAttribute('aria-label', t.title);
 }
 /* le switch vert (valeurs dans les simulations) passe sur ON : le bandeau se déploie aussi s'il était replié */
@@ -523,13 +468,13 @@ function kick() {                                                           // l
 function init(callbacks) {
   if (inited) return; cb = callbacks;
   calc = $('p-calc'); main = document.querySelector('main'); stage = $('stage3d'); side = $('side3d'); colOut = document.querySelector('.col.out'); viz = $('viz'); params = $('params');
-  dispBox = $('dispBox'); locks = $('locks'); status = $('status'); warnBox = $('warnBox'); simVals = $('simVals'); kpis = $('kpis'); band = $('dataBand'); dbIn = $('dbIn'); dragSel = $('dragSel3d');
+  status = $('status'); warnBox = $('warnBox'); simVals = $('simVals'); kpis = $('kpis'); band = $('dataBand'); dbIn = $('dbIn'); dragSel = $('dragSel3d');
   cards = { face: viz.querySelector('.card.face'), side: viz.querySelector('.card.side'), top: viz.querySelector('.card.top') };
-  home.locks = { parent: locks.parentNode, next: locks.nextSibling }; home.drag = { parent: dragSel.parentNode, next: dragSel.nextSibling };
+  home.drag = { parent: dragSel.parentNode, next: dragSel.nextSibling };
 
-  tabs = mk('tabs3d'); tabs.innerHTML = '<button type="button" data-t="views" title="Afficher / replier la fenêtre des vues (face, côté, dessus)">Vues</button><button type="button" data-t="params" title="Afficher / replier la fenêtre des réglages">Réglages</button><button type="button" data-t="disp" title="Afficher / replier la fenêtre d\'affichage (scène, verrous, bandeau données)">Affichage</button>';
+  tabs = mk('tabs3d'); tabs.innerHTML = '<button type="button" data-t="views" title="Afficher / replier la fenêtre des vues (face, côté, dessus)">Vues</button><button type="button" data-t="params" title="Afficher / replier la fenêtre des réglages">Réglages</button>';
   tabs.onclick = e => { if (e.target.closest('[data-reset]')) { resetLayout(); return; } const b = e.target.closest('button[data-t]'); if (b) toggle(b.dataset.t); };
-  $('closeViews').onclick = () => toggle('views'); $('closeParams').onclick = () => toggle('params'); $('closeDisp').onclick = () => toggle('disp');
+  $('closeViews').onclick = () => toggle('views'); $('closeParams').onclick = () => toggle('params');
   /* appui long (1 s) sur le bouton d'une vue : sa disposition par défaut */
   let holdT = 0, held = false;
   const mm = $('m3modes');
@@ -542,11 +487,8 @@ function init(callbacks) {
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => mm.addEventListener(t, endHold));
   mm.addEventListener('contextmenu', e => { if (e.target.closest('button[data-m]')) e.preventDefault(); });
   mm.addEventListener('click', e => { const b = e.target.closest('button[data-m]'); if (!b) return; if (held) { held = false; return; } activeView = null; const m = b.dataset.m;
-    if (m === 'max') enterMax();
-    else if (m === 'full') { if (mode !== 'full') { fl.max = null; fl.back = null; setMode('full', { main: fl.main }); } else if (fl.max) exitMax(); }
-    else setMode(m, { main: fl.main });
-    renderModes(); });      // Vue principale / compacte / vues élargies / plein écran (barre du haut)
-  $('kchk').onclick = e => { const b = e.target.closest('button[data-kp]'); if (!b) return; pref.kpi[b.dataset.kp] = pref.kpi[b.dataset.kp] ? 0 : 1; save(); syncKpi(); };
+    setMode(m, { main: fl.main });
+    renderModes(); });      // Vue principale / compacte / vues élargies (barre du haut)
   $('dbTab').onclick = () => setBand(!bandOpen);
 
   root3 = mk('m3Root'); root3.id = 'm3Root'; root3.hidden = true;
@@ -563,16 +505,15 @@ function init(callbacks) {
   nWrap.addEventListener('click', e => { const t = e.target.closest('[data-n]'), r = e.target.closest('[data-nr]'); if (t) nToggle(t.dataset.n); else if (r) { resetLayout(); } });
   root3.append(bar, scroll, fmain, nWrap, mdata, park); calc.append(root3);
   bar.onclick = barClick;
-  dataBox = mk('dataBox'); pHost = mk('mzHost p3Col');
+  dataBox = mk('dataBox');
   const chost = buildRows();
-  mzC = Mosaic.create({ host: chost, wins: winDefs('c'), park, place: placeInViews, folded: cpt.fold, onDropOut: dropOut, onChange: () => { cpt.tree = mzC.state(); if (mode === 'compact') layoutRows(); else { renderBar(); kick(); } }, onAction });
+  mzC = Mosaic.create({ host: chost, wins: winDefs('c'), park, place: placeInViews, folded: cpt.fold, onDropOut: dropOut, onChange: () => { cpt.tree = mzC.state(); if (mode === 'compact') layoutRows(); else { renderBar(); kick(); } } });
   mzF = Mosaic.create({ host: fhost, wins: winDefs('f'), park, edge: true, share: nShare, place: placeF,
-    onClose: id => { if (!FWIN.includes(id) || fl.max) return; const sh = mzF.shell(id).el.getBoundingClientRect(), hr = fhost.getBoundingClientRect(), side = fl.dock[id], f = side === 'l' || side === 'r' ? sh.width / hr.width : sh.height / hr.height; if (isFinite(f) && f > .05) fl.frac[id] = Math.min(.5, f); },      // dernière taille de Réglages / Affichage
-    onChange: () => { if (!fl.max) fl.tree = mzF.state(); if (mode === 'full') { syncPanel(); updateDocksF(); renderTabsF(); requestAnimationFrame(adaptN); } renderBar(); kick(); }, onAction });
+    onClose: id => { if (!FWIN.includes(id)) return; const sh = mzF.shell(id).el.getBoundingClientRect(), hr = fhost.getBoundingClientRect(), side = fl.dock[id], f = side === 'l' || side === 'r' ? sh.width / hr.width : sh.height / hr.height; if (isFinite(f) && f > .05) fl.frac[id] = Math.min(.5, f); },      // dernière taille de Réglages / Affichage
+    onChange: () => { fl.tree = mzF.state(); if (mode === 'full') { updateDocksF(); renderTabsF(); requestAnimationFrame(adaptN); } renderBar(); kick(); } });
   mzN = Mosaic.create({ host: nHost, wins: winDefs('n'), park, edge: true, share: nShare, place: placeN,
     onClose: id => { const sh = mzN.shell(id).el.getBoundingClientRect(), hr = nHost.getBoundingClientRect(), side = nav.dock[id], f = side === 'l' || side === 'r' ? sh.width / hr.width : sh.height / hr.height; if (isFinite(f) && f > .05) nav.frac[id] = Math.min(.5, f); },
-    onChange: () => { nav.tree = mzN.state(); if (mode === 'normal') { updateDocks(); renderTabsN(); requestAnimationFrame(adaptN); } kick(); }, onAction });
-  mzP = Mosaic.create({ host: pHost, wins: winDefs('p'), park, onChange: () => kick(), onAction });
+    onChange: () => { nav.tree = mzN.state(); if (mode === 'normal') { updateDocks(); renderTabsN(); requestAnimationFrame(adaptN); } kick(); } });
 
   if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(() => { if (on) kick(); }); Object.values(cards).forEach(c => ro.observe(c));
     roN = new ResizeObserver(() => { if (on && (mode === 'normal' || mode === 'full')) adaptN(); }); NWIN.forEach(k => roN.observe(mzN.shell(k).el)); FWIN.forEach(k => roN.observe(mzF.shell(k).el)); }
@@ -582,25 +523,25 @@ function init(callbacks) {
 function enter() {
   if (on) return; on = true;
   calc.classList.add('m3d'); main.classList.add('m3d');
-  document.querySelectorAll('.viz .expand').forEach(b => { b.dataset.t0 = b.title; b.title = 'Vues élargies'; });      // page VP : la flèche ⤢ des vues ouvre les vues élargies
   colOut.append(dragSel);
   arrange(mode);
 }
 function leave() {
   if (!on) return;
+  if (root.WinZoom) root.WinZoom.close();
   toBase();
   calc.insertBefore(params, calc.firstChild);
   colOut.insertBefore(viz, $('msg3d')); colOut.insertBefore(simVals, $('msg3d')); colOut.append(kpis);
   calc.append(colOut);
   home.drag.parent.insertBefore(dragSel, home.drag.next);
-  home.locks.parent.insertBefore(locks, home.locks.next);
   on = false;
-  document.querySelectorAll('.viz .expand').forEach(b => { if (b.dataset.t0 != null) b.title = b.dataset.t0; });
-  calc.classList.remove('m3d', 'm3n', 'm3c', 'm3f', 'm3max'); main.classList.remove('m3d', 'm3n', 'm3c', 'm3f', 'm3max', 'p3off', 'p3noviews', 'p3noparams', 'p3nodisp'); main.style.removeProperty('--hdr3d');
+  calc.classList.remove('m3d', 'm3n', 'm3c', 'm3f'); main.classList.remove('m3d', 'm3n', 'm3c', 'm3f', 'p3off', 'p3noviews', 'p3noparams', 'p3nodisp'); main.style.removeProperty('--hdr3d');
   KP.forEach(k => calc.classList.remove('hk-' + k));
   ['side', 'top', 'face'].forEach(k => cards[k].classList.remove('hide3d')); viz.classList.remove('hide3d');
 }
 
-root.Layout3D = { init, enter, leave, vars, kick, setMode, simSwitch, setBand, snapshot, restore, bigView, floatParams, scrollInset, setActive: id => { activeView = id || null; renderModes(); }, get mode() { return mode; }, get active() { return activeView; },
-  fullFrom: card => onAction(card.classList.contains('side') ? 'side' : card.classList.contains('top') ? 'top' : 'face', 'full') };
+/* indicateurs du bandeau données affichés (fenêtre Affichage) */
+const kpi = { list: () => KP.slice(), get: k => !!pref.kpi[k], set(k, v) { if (!KP.includes(k)) return; pref.kpi[k] = v ? 1 : 0; save(); if (calc) syncKpi(); } };
+
+root.Layout3D = { init, enter, leave, vars, kick, setMode, simSwitch, setBand, kpi, get bandOpen() { return bandOpen; }, snapshot, restore, bigView, floatParams, scrollInset, setActive: id => { activeView = id || null; renderModes(); }, get mode() { return mode; }, get active() { return activeView; } };
 })(window);

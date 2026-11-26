@@ -655,7 +655,7 @@ function enter() {
   if (on || !inited) return;
   const calc = $('p-calc');
   if (calc.classList.contains('cfg')) $('cfgBtn').click();                                          // sort de la vue compacte 2D
-  const big = document.querySelector('.viz .card.full'); if (big) big.querySelector('.expand').click();      // et du plein écran 2D d'une vue
+  if (window.WinZoom) WinZoom.close();                                                             // et une fenêtre agrandie revient à sa place
   on = true;
   Layout3D.enter();
   requestAnimationFrame(() => { Layout3D.vars(); if (!fitted) { setupCam(); const rc = stage.getBoundingClientRect(); W = rc.width; H = rc.height; setupCam(); fit(); } api.render(); draw(); });
@@ -666,7 +666,7 @@ function leave() {
   Layout3D.leave();
 }
 
-let syncShow = () => {};                                          // met à jour les boutons Faisceau / Position VP / Orientation VP / Lens shift
+let syncShow = () => {};                                          // applique les règles d'affichage (classes de la page) et met à jour la fenêtre Affichage
 function init(a) {
   api = a; stage = $('stage3d');
   stage.innerHTML = `<canvas id="cv3d"></canvas>
@@ -681,20 +681,11 @@ function init(a) {
   cv.addEventListener('wheel', onWheel, { passive: false }); cv.addEventListener('contextmenu', e => e.preventDefault());
   $('pre3d').onclick = e => { const b = e.target.closest('button[data-pre]'); if (b) preset(b.dataset.pre); };
   Layout3D.init({ render: () => { if (api) api.render(); }, getShow: () => JSON.parse(JSON.stringify(prefs.show)), setShow: sh => { prefs.show = normShow({ ...prefs.show, ...sh }); savePrefs(); syncShow(); if (api) api.render(); else draw(); } });
-  const ib = $('info3d');
-  if (ib) ib.onclick = () => { const h = $('hint3d'), on = !h.classList.contains('open'); h.classList.toggle('open', on); ib.setAttribute('aria-pressed', on); };      // « i » : affiche / masque l'aide des gestes
-  const sb = $('show3d');
-  if (sb) {
-    syncShow = () => {
-      const w = prefs.show.sel, f = prefs.show.v[w], c = $('p-calc');
-      sb.dataset.w = w; sb.querySelectorAll('button[data-k]').forEach(b => b.classList.toggle('on', !!f[b.dataset.k]));
-      $('vsel').querySelectorAll('button[data-w]').forEach(b => b.classList.toggle('on', b.dataset.w === w));
-      c.classList.toggle('noAdv3', !prefs.show.v['3d'].adv); c.classList.toggle('noAdvF', !prefs.show.v.face.adv);      // adv : boutons « Réglages supplémentaires », dans la scène 3D et / ou dans la vue de face
-    };
-    sb.onclick = e => { const b = e.target.closest('button[data-k]'); if (!b) return; const w = prefs.show.sel; prefs.show.v[w][b.dataset.k] = !prefs.show.v[w][b.dataset.k]; savePrefs(); syncShow(); if (api) api.render(); else draw(); };      // réglage de la vue choisie seulement ; les vues 2D se redessinent aussi
-    $('vsel').onclick = e => { const b = e.target.closest('button[data-w]'); if (!b || prefs.show.sel === b.dataset.w) return; prefs.show.sel = b.dataset.w; savePrefs(); syncShow(); };      // choisit la vue dont on règle les éléments
-    syncShow();
-  }
+  syncShow = () => {                                                // « Réglages supplémentaires » : boutons dans la scène 3D et / ou dans la vue de face ; la fenêtre Affichage (display.js) se met à jour
+    const c = $('p-calc'); c.classList.toggle('noAdv3', !prefs.show.v['3d'].adv); c.classList.toggle('noAdvF', !prefs.show.v.face.adv);
+    if (root.Display) root.Display.refresh();
+  };
+  syncShow();
   if (typeof ResizeObserver !== 'undefined') {                      // la scène, la barre du haut et la pile du bas (indications, indicateurs, valeurs vertes) changent de taille : on recale la mise en page
     const ro = new ResizeObserver(() => { if (on) { Layout3D.vars(); draw(); } });
     [stage, document.querySelector('main > header'), $('hint3d'), $('dragSel3d'), $('simVals'), $('kpis')].forEach(e => e && ro.observe(e));
@@ -705,5 +696,15 @@ function init(a) {
 /* pixels par mètre au niveau de l'écran (échelle des glissers depuis les icônes de la vue de face) */
 function scale() { if (!lastG) return 50; const d = cc(lastG.scC)[2]; return d > NEAR ? clamp(FPX / d, 8, 400) : 50; }
 
-root.View3D = { init, enter, leave, draw, scale, showFor: v => on ? prefs.show.v[v] : null, get active() { return on; } };
+/* Règles d'affichage de chaque vue (fenêtre Affichage, display.js) : defs = éléments réglables par vue ; get / set = valeur d'un élément ; help = aide des gestes de la Vue 3D */
+const show = {
+  defs: () => JSON.parse(JSON.stringify(SHOW_DEF)),
+  get: (w, k) => !!(prefs.show.v[w] && prefs.show.v[w][k]),
+  set(w, k, v) { if (!prefs.show.v[w] || !(k in prefs.show.v[w])) return; prefs.show.v[w][k] = !!v; savePrefs(); syncShow(); if (k === 'calc' && api) { if (v && api.calcOn) api.calcOn(); else if (!v && api.calcOff) api.calcOff(); } if (api) api.render(); else draw(); },      // « Calcul config » activé : switch vert sur ON, bandeau déployé, 1re valeur verte soulignée (app.js)
+};
+const help = {
+  get: () => { const h = $('hint3d'); return !!h && h.classList.contains('open'); },
+  set(v) { const h = $('hint3d'); if (h) h.classList.toggle('open', !!v); if (root.Display) root.Display.refresh(); },
+};
+root.View3D = { init, enter, leave, draw, scale, show, help, showFor: v => on ? prefs.show.v[v] : null, get active() { return on; } };
 })(window);

@@ -105,9 +105,6 @@
             title="Vue compacte : les 4 fenêtres graphiques sur une ligne, réglages dessous">Vue compacte</button>
           <button type="button" class="m3btn" data-m="full"
             title="Vues élargies : une grande fenêtre et les autres en colonne">Vues élargies</button>
-          <button type="button" class="m3btn" data-m="max"
-            title="Plein écran : la vue 3D seule, au-dessus de tout ; les autres vues, réglages et affichage s'ouvrent dans des volets à droite">Plein
-            écran</button>
           <div class="uvWrap" id="uvWrap">
             <button type="button" class="m3btn" id="uvBtn" aria-haspopup="true" aria-expanded="false"
               title="Vues enregistrées">Vue utilisateur ▾</button>
@@ -117,6 +114,21 @@
         <div class="hsp"></div>
         <button class="txtlink" id="cfgBtn" title="Vue compacte : vues en petit au-dessus, réglages sur 2 colonnes">vue
           compacte</button>
+        <!-- œil : fenêtre Affichage (règles d'affichage de toutes les fenêtres, page VP) · cadenas : fenêtre Verrous (tous les paramètres verrouillables) · étoile : favoris de la config chargée ; à gauche du switch vert -->
+        <button type="button" class="hIco" id="eyeBtn" aria-label="Affichage"
+          title="Affichage : les règles d'affichage de toutes les fenêtres"><svg viewBox="0 0 24 24">
+            <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" />
+            <circle cx="12" cy="12" r="3.2" />
+          </svg></button>
+        <button type="button" class="hIco" id="lockBtn" aria-label="Verrous"
+          title="Verrous : tous les paramètres verrouillables, en un coup d'œil"><svg viewBox="0 0 24 24">
+            <rect x="5" y="11" width="14" height="9" rx="2" />
+            <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+          </svg></button>
+        <button type="button" class="hIco" id="starBtn" aria-label="Favoris"
+          title="Favoris : tous les favoris de la configuration chargée"><svg viewBox="0 0 24 24">
+            <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 17l-5.2 2.7 1-5.9-4.3-4.1 5.9-.8z" />
+          </svg></button>
         <div class="calcWrap" id="calcWrap">
           <!-- le switch vert enveloppe le bouton Calculs (déborde de 1,5 rangée en haut / en bas, 4 colonnes de chaque côté) -->
           <button type="button" class="simTog simWrap" id="simTopTog" aria-label="Valeurs dans les simulations"
@@ -141,40 +153,6 @@
                 aria-label="Replier la fenêtre des réglages" title="Replier">✕</button></div>
             <div class="wb scroll" id="paramsBody"></div>
           </section>
-          <section class="win3d" id="win3dDisp">
-            <div class="wh"><b>Affichage</b><button type="button" class="wx" id="closeDisp"
-                aria-label="Replier la fenêtre d'affichage" title="Replier">✕</button></div>
-            <div class="wb" id="dispBody">
-              <div class="dispBox" id="dispBox">
-                <div class="dsec">
-                  <h4 class="vsel" id="vsel"><button type="button" data-w="3d">Vue 3D</button><button type="button"
-                      data-w="face">De face</button><button type="button" data-w="side">de
-                      côté</button><button type="button" data-w="top">de dessus</button></h4>
-                  <div class="show3d" id="show3d"><button type="button" data-k="beam">Faisceau</button><button
-                      type="button" data-k="pos">Position VP</button><button type="button" data-k="ori">Orientation
-                      VP</button><button type="button" data-k="lens">Lens shift</button><button type="button"
-                      data-k="calc"
-                      title="Afficher dans la scène la valeur du paramètre touché dans la barre de valeurs (Calculs config / favoris)">Calcul
-                      config</button><button type="button" data-k="adv"
-                      title="Afficher les boutons « Viser le centre de l’écran », Lens shift, Translation, Rotation et Zoom">Réglages
-                      supplémentaires</button><button type="button" class="info3d" id="info3d"
-                      aria-label="Aide : gestes de la vue 3D" aria-pressed="false"
-                      title="Aide : gestes de la vue 3D">i</button></div>
-                </div>
-                <div class="dsec">
-                  <h4>Verrous</h4>
-                  <div class="locksHome" id="locksHome"></div>
-                </div>
-                <div class="dsec">
-                  <h4>Bandeau données</h4>
-                  <div class="kchk" id="kchk"><button type="button" data-kp="util">Pixels utiles</button><button
-                      type="button" data-kp="perdus">Pixels perdus</button><button type="button" data-kp="couvert">Écran
-                      couvert</button><button type="button" data-kp="ratio">Ratio</button><button type="button"
-                      data-kp="lux">Éclairement</button><button type="button" data-kp="forme">Forme</button></div>
-                </div>
-              </div>
-            </div>
-          </section>
         </aside>
         <div class="col params scroll" id="params"></div>
         <div class="col out">
@@ -187,7 +165,7 @@
                   hidden><button type="button" data-v="room">Vue salle</button><button type="button" data-v="screen">Vue
                     écran</button></span></span>
               <div class="dragSel" id="dragSel"></div>
-              <div class="refSel" id="refSel"></div><button class="expand" title="Plein écran">⤢</button>
+              <div class="refSel" id="refSel"></div>
               <div class="hud"></div><svg id="svgFace"></svg>
               <div class="dispSel" id="dispSel"><span class="lab">affichage</span>
                 <div class="r2">
@@ -211,8 +189,7 @@
               <div class="legend"><span><i style="background:#3ecf8e"></i>pixels utiles</span><span><i
                     style="background:#ff5d5d"></i>pixels perdus</span></div>
             </div>
-            <div class="card side"><span class="tag">Vue de côté</span><button class="expand"
-                title="Plein écran">⤢</button>
+            <div class="card side"><span class="tag">Vue de côté</span>
               <div class="dispSel dispTop" id="dispSelSide">
                 <div class="r2">
                   <button data-d="zoom" aria-label="Zoom de l’affichage"
@@ -233,8 +210,7 @@
               </div>
               <div class="hud"></div><svg id="svgSide"></svg>
             </div>
-            <div class="card top"><span class="tag">Vue de dessus</span><button class="expand"
-                title="Plein écran">⤢</button>
+            <div class="card top"><span class="tag">Vue de dessus</span>
               <div class="dispSel dispTop" id="dispSelTop">
                 <div class="r2">
                   <button data-d="zoom" aria-label="Zoom de l’affichage"
@@ -285,8 +261,7 @@
       <aside id="details">
         <div class="dhead">
           <h3>Calculs détaillés</h3><span class="simHead" id="simHead"></span><span class="dsp"></span><button
-            class="hbtn" id="detFull" title="Plein écran">⤢</button><button class="hbtn" id="detBack"
-            hidden>Retour</button><button class="hbtn" id="detClose">Fermer</button>
+            class="hbtn" id="detBack" hidden>Retour</button><button class="hbtn" id="detClose">Fermer</button>
         </div>
         <div class="tabs" id="dtabs"></div>
         <div class="dbody" id="dbody"></div>
@@ -302,9 +277,12 @@
   <script src="parc.js"></script>
   <script src="screens.js"></script>
   <script src="mosaic.js"></script>
+  <script src="winzoom.js"></script>
+  <script src="panels.js"></script>
   <script src="layout3d.js"></script>
   <script src="userviews.js"></script>
   <script src="view3d.js"></script>
+  <script src="display.js"></script>
   <script src="app.js"></script>
 </body>
 
